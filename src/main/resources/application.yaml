@@ -1,0 +1,30 @@
+
+spring:
+
+  application:
+    name: mobile-banking
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bankmobileapp_db}
+    username: ${DB_USERNAME:abcbank_app}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: true
+    properties:
+      hibernate:
+      format_sql: true
+
+app:
+
+  security:
+    jwt-secret: ${APP_JWT_SECRET}
+    registration-token-ttl-seconds: 300
+
+  registration:
+    otp-bypass-enabled: ${OTP_BYPASS_ENABLED:false}
+
+server:
+  port: 8080

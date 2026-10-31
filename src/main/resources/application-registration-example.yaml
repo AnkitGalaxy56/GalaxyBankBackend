@@ -1,0 +1,15 @@
+# Merge these settings into application.yaml. Credentials must come from environment variables/secrets.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bankmobileapp_db}
+    username: ${DB_USERNAME:abcbank_app}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+app:
+  security:
+    jwt-secret: ${APP_JWT_SECRET}
+    registration-token-ttl-seconds: ${REGISTRATION_TOKEN_TTL_SECONDS:300}
