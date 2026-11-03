@@ -3,7 +3,7 @@
 This module adds the first two registration endpoints to the existing `com.abcbank.mobile_banking` Spring Boot project. It is designed for Spring Boot 3.x / Java 17+ and assumes PostgreSQL, Spring Web, Spring Validation, Spring Data JPA, Spring Security, and JJWT dependencies are present.
 
 ## Important schema note
-The supplied spreadsheet lists `emp_no`, `username`, `password_hash`, `mobile`, `user_type`, etc., but does not show a `customer_id` field or the actual table names for codes `U001`, `1002`, `1003`. Do not assume those codes are table names. This module therefore uses a separate `customer_registry` table as a trusted adapter to the bank's customer master. In production, populate it from your core banking/customer master integration, not from app requests. If you already have a customer master table, change `CustomerRegistry` and its repository to map that table instead.
+The supplied spreadsheet lists `emp_no`, `username`, `password_hash`, `mobile`, `user_type`, etc., but does not show a `customer_id` field or the actual table names for codes `U001`, `1002`, `1003`. Do not assume those codes are table names. This module therefore uses a separate `mb001001cr` table as a trusted adapter to the bank's customer master. In production, populate it from your core banking/customer master integration, not from app requests. If you already have a customer master table, change `CustomerRegistry` and its repository to map that table instead.
 
 ## Endpoints
 
@@ -35,7 +35,7 @@ Use Spring Boot's dependency management for Spring dependencies. If your project
 ## Database setup
 1. Back up the database.
 2. Review and apply `src/main/resources/db/migration/V1__registration_tables.sql` in `bankmobileapp_db` (or adapt the migration to your real customer master schema).
-3. Seed `customer_registry` from trusted records, for example through a controlled DBA/import process. Never seed production customer data manually from user input.
+3. Seed `mb001001cr` from trusted records, for example through a controlled DBA/import process. Never seed production customer data manually from user input.
 4. Grant the app role only necessary privileges on these tables.
 5. Set `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, and `APP_JWT_SECRET` in your environment or secret manager. Do not put passwords or JWT secrets in source control.
 
