@@ -1,3 +1,4 @@
+
 package com.abcbank.mobile_banking.entity;
 
 import java.time.Instant;
@@ -8,15 +9,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "mobile_banking_users")
+@Table(name = "mobile_banking_users", schema = "public")
 public class MobileBankingUser {
 
     @Id
     @Column(name = "customer_id", nullable = false, length = 30)
     private String customerId;
 
-    @Column(name = "mpin_hash", nullable = false, length = 100)
-    private String mpinHash;
+    @Column(name = "user_id", nullable = false, unique = true)
+    private Long userId;
 
     @Column(name = "registration_status", nullable = false, length = 20)
     private String registrationStatus = "ACTIVE";
@@ -27,11 +28,12 @@ public class MobileBankingUser {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    protected MobileBankingUser() {}
+    protected MobileBankingUser() {
+    }
 
-    public MobileBankingUser(String customerId, String mpinHash) {
+    public MobileBankingUser(String customerId, Long userId) {
         this.customerId = customerId;
-        this.mpinHash = mpinHash;
+        this.userId = userId;
         this.registrationStatus = "ACTIVE";
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
@@ -41,8 +43,8 @@ public class MobileBankingUser {
         return customerId;
     }
 
-    public String getMpinHash() {
-        return mpinHash;
+    public Long getUserId() {
+        return userId;
     }
 
     public String getRegistrationStatus() {

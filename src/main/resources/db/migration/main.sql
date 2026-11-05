@@ -408,7 +408,7 @@ CREATE INDEX IF NOT EXISTS idx_mb004003_customer ON public."MB004003" (customer_
 CREATE INDEX IF NOT EXISTS idx_mb004003_branch_status ON public."MB004003" (branch_code, req_status);
 -- one live stop-payment per cheque
 CREATE UNIQUE INDEX IF NOT EXISTS uq_mb004003_live_cheque ON public."MB004003"(account_no, cheque_no)
-    WHERE req_status IN ('PENDING','APPROVED','COMPLETED');
+    WHERE  IN ('PENDING','APPROVED','COMPLETED');
 
 -- MB004004  FD Opening
 CREATE TABLE IF NOT EXISTS public."MB004004" (

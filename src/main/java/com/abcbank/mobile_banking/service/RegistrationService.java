@@ -1,5 +1,8 @@
+
 package com.abcbank.mobile_banking.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 
@@ -15,9 +18,11 @@ import com.abcbank.mobile_banking.dto.response.RegistrationStartResponse;
 import com.abcbank.mobile_banking.dto.response.RegistrationTokenResponse;
 import com.abcbank.mobile_banking.entity.CustomerRegistry;
 import com.abcbank.mobile_banking.entity.MobileBankingUser;
+import com.abcbank.mobile_banking.entity.MpinCredential;
 import com.abcbank.mobile_banking.entity.RegistrationChallenge;
 import com.abcbank.mobile_banking.repository.CustomerRegistryRepository;
 import com.abcbank.mobile_banking.repository.MobileBankingUserRepository;
+import com.abcbank.mobile_banking.repository.MpinCredentialRepository;
 import com.abcbank.mobile_banking.repository.RegistrationChallengeRepository;
 import com.abcbank.mobile_banking.security.JwtService;
 
@@ -30,6 +35,7 @@ public class RegistrationService {
     private final CustomerRegistryRepository customers;
     private final RegistrationChallengeRepository challenges;
     private final MobileBankingUserRepository mobileUsers;
+    private final MpinCredentialRepository mpinCredentials;
     private final PasswordEncoder encoder;
     private final OtpDeliveryService otpDelivery;
     private final JwtService jwt;
@@ -40,6 +46,7 @@ public class RegistrationService {
             CustomerRegistryRepository customers,
             RegistrationChallengeRepository challenges,
             MobileBankingUserRepository mobileUsers,
+            MpinCredentialRepository mpinCredentials,
             PasswordEncoder encoder,
             OtpDeliveryService otpDelivery,
             JwtService jwt) {
@@ -47,6 +54,7 @@ public class RegistrationService {
         this.customers = customers;
         this.challenges = challenges;
         this.mobileUsers = mobileUsers;
+        this.mpinCredentials = mpinCredentials;
         this.encoder = encoder;
         this.otpDelivery = otpDelivery;
         this.jwt = jwt;
@@ -155,7 +163,8 @@ public class RegistrationService {
         );
     }
 
-    // STEP 3: Complete registration and save the MPIN hash
+    // STEP 3: Complete registration
+    // MPIN hash is stored ONLY in MB001003.
     @Transactional
     public RegistrationCompleteResponse complete(
             String customerId,
@@ -167,7 +176,11 @@ public class RegistrationService {
             );
         }
 
-        if (!request.mpin().equals(request.confirmMpin())) {
+        if (request == null
+                || request.mpin() == null
+                || request.confirmMpin() == null
+                || !request.mpin().equals(request.confirmMpin())) {
+
             throw new IllegalArgumentException(
                     "MPIN and confirm MPIN do not match."
             );
@@ -185,16 +198,38 @@ public class RegistrationService {
             );
         }
 
-        if (mobileUsers.existsByCustomerId(customerId)) {
+        // Get User Master ID from Customer Registry.
+        Long userId = customer.getUserId();
+
+        if (userId == null) {
+            throw new IllegalArgumentException(
+                    "Customer is not linked to a User Master record."
+            );
+        }
+
+        // Prevent duplicate registration.
+        if (mobileUsers.existsByCustomerId(customerId)
+                || mobileUsers.existsByUserId(userId)
+                || mpinCredentials.existsByCustomerId(customerId)
+                || mpinCredentials.existsByUserId(userId)) {
+
             throw new IllegalArgumentException(
                     "Mobile banking registration is already completed."
             );
         }
 
+        // Encode MPIN using the configured PasswordEncoder.
         String hashedMpin = encoder.encode(request.mpin());
 
+        // Save MPIN hash and both IDs in MB001003.
+        MpinCredential credential =
+                new MpinCredential(customerId, userId, hashedMpin);
+
+        mpinCredentials.save(credential);
+
+        // Save registration status and both IDs separately.
         MobileBankingUser user =
-                new MobileBankingUser(customerId, hashedMpin);
+                new MobileBankingUser(customerId, userId);
 
         mobileUsers.save(user);
 
@@ -206,13 +241,15 @@ public class RegistrationService {
     }
 
     private String normalize(String value) {
-        return value == null ? "" : value.replaceAll("\\s+", "");
+        return value == null
+                ? ""
+                : value.replaceAll("\\s+", "");
     }
 
     private boolean constantTimeEquals(String a, String b) {
-        return java.security.MessageDigest.isEqual(
-                a.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                b.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        return MessageDigest.isEqual(
+                a.getBytes(StandardCharsets.UTF_8),
+                b.getBytes(StandardCharsets.UTF_8)
         );
     }
 

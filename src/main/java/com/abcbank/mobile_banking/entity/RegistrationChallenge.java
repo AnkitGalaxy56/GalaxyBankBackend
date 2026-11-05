@@ -1,7 +1,14 @@
 package com.abcbank.mobile_banking.entity;
 
-import jakarta.persistence.*;
 import java.time.Instant;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "registration_challenges", indexes = @Index(name = "idx_reg_challenge_customer", columnList = "customer_id"))
