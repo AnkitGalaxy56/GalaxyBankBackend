@@ -1,14 +1,16 @@
+
 package com.abcbank.mobile_banking.config;
 
-import com.abcbank.mobile_banking.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.abcbank.mobile_banking.security.JwtAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
@@ -23,10 +25,15 @@ public class SecurityConfig {
             .requestMatchers("/api/v1/auth/forgot-mpin/reset").hasAuthority("SCOPE_mpin:reset")
             .requestMatchers("/api/v1/registration/complete").hasAuthority("SCOPE_registration:complete")
             // only a real login token may use banking APIs (registration / reset tokens may not)
-            .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_access")
+            .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_fund:transfer")
+           // .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_access")
             .anyRequest().authenticated())
           .httpBasic(b -> b.disable()).formLogin(f -> f.disable())
           .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
     }
-    @Bean PasswordEncoder passwordEncoder(){ return new BCryptPasswordEncoder(12); }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
 }
