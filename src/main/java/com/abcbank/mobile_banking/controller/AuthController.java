@@ -1,5 +1,4 @@
 package com.abcbank.mobile_banking.controller;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,6 +37,9 @@ public class AuthController {
     public ResponseEntity<AuthResponse> webLogin(@Valid @RequestBody WebLoginRequest request) {
         return ResponseEntity.ok(authService.webLogin(request));
     }
+
+
+
 
     /** Mobile app: customerId + 4-digit MPIN. */
     @PostMapping("/mpin/login")
