@@ -1,3 +1,4 @@
+
 package com.abcbank.mobile_banking.config;
 
 import org.springframework.context.annotation.Bean;
@@ -26,11 +27,15 @@ public class SecurityConfig {
             .requestMatchers("/api/v1/auth/forgot-mpin/reset").hasAuthority("SCOPE_mpin:reset")
             .requestMatchers("/api/v1/registration/complete").hasAuthority("SCOPE_registration:complete")
             // only a real login token may use banking APIs (registration / reset tokens may not)
-            .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_access")
-            .requestMatchers("/api/v1/standing-instructions/**").hasAuthority("SCOPE_access")
+            .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_fund:transfer")
+           // .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_access")
             .anyRequest().authenticated())
           .httpBasic(b -> b.disable()).formLogin(f -> f.disable())
           .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
     }
-    @Bean PasswordEncoder passwordEncoder(){ return new BCryptPasswordEncoder(12); }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder(12);
+    }
 }
