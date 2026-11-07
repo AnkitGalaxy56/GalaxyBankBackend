@@ -1,6 +1,5 @@
 
 package com.abcbank.mobile_banking.config;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -18,22 +17,52 @@ public class SecurityConfig {
         return http.csrf(csrf -> csrf.disable())
           .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
           .authorizeHttpRequests(a -> a
-            .requestMatchers("/api/v1/registration/start", "/api/v1/registration/verify-otp", "/actuator/health").permitAll()
+    .requestMatchers(
+        "/api/v1/registration/start",
+        "/api/v1/registration/verify-otp",
+        "/actuator/health"
+    ).permitAll()
+
+    .requestMatchers(
+        "/api/v1/auth/web/login",
+        "/api/v1/auth/mpin/login",
+        "/api/v1/auth/forgot-mpin/request",
+        "/api/v1/auth/forgot-mpin/verify-otp"
+    ).permitAll()
+
+    .requestMatchers("/api/v1/auth/forgot-mpin/reset")
+        .hasAuthority("SCOPE_mpin:reset")
+
+    .requestMatchers("/api/v1/registration/complete")
+        .hasAuthority("SCOPE_registration:complete")
+
+    .requestMatchers("/api/v1/transfers/**")
+        .hasAuthority("SCOPE_fund:transfer")
+
+    .requestMatchers("/api/v1/requests/stop-payment")
+        .hasAuthority("SCOPE_fund:transfer")
+
+    .anyRequest().authenticated()
+)
+           // .requestMatchers("/api/v1/registration/start", "/api/v1/registration/verify-otp", "/actuator/health").permitAll()
             // LOGIN + FORGOT MPIN (added)
-            .requestMatchers("/api/v1/auth/web/login", "/api/v1/auth/mpin/login",
-                             "/api/v1/auth/forgot-mpin/request", "/api/v1/auth/forgot-mpin/verify-otp").permitAll()
-            .requestMatchers("/api/v1/auth/forgot-mpin/reset").hasAuthority("SCOPE_mpin:reset")
-            .requestMatchers("/api/v1/registration/complete").hasAuthority("SCOPE_registration:complete")
+            //.requestMatchers("/api/v1/auth/web/login", "/api/v1/auth/mpin/login",
+            //                 "/api/v1/auth/forgot-mpin/request", "/api/v1/auth/forgot-mpin/verify-otp").permitAll()
+            //.requestMatchers("/api/v1/auth/forgot-mpin/reset").hasAuthority("SCOPE_mpin:reset")
+            //.requestMatchers("/api/v1/registration/complete").hasAuthority("SCOPE_registration:complete")
             // only a real login token may use banking APIs (registration / reset tokens may not)
-            .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_fund:transfer")
+           // .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_fund:transfer")
            // .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_access")
-            .anyRequest().authenticated())
+           // .anyRequest().authenticated())
           .httpBasic(b -> b.disable()).formLogin(f -> f.disable())
           .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
+
+          
     }
 
     @Bean
-    PasswordEncoder passwordEncoder() {
+    PasswordEncoder passwordEncoder() 
+    {
         return new BCryptPasswordEncoder(12);
     }
 }
