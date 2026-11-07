@@ -25,6 +25,7 @@ security:
 
 app:
   security:
+    jwt-secret: ${APP_JWT_SECRET}
     registration-token-ttl-seconds: ${REGISTRATION_TOKEN_TTL_SECONDS:300}
 
   registration:
