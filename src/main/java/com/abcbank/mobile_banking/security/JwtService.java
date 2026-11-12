@@ -29,6 +29,20 @@ public class JwtService {
         return Jwts.builder().subject(customerId).claim("user_type", "CU").claim("scope", "registration:complete")
           .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(ttlSeconds))).signWith(key).compact();
     }
+
+    public String createAccessToken(String customerId) {
+    Instant now = Instant.now();
+
+    return Jwts.builder()
+            .subject(customerId)
+            .claim("user_type", "CU")
+            .claim("scope", "fund:transfer")
+            .claim("token_use", "access")
+            .issuedAt(Date.from(now))
+            .expiration(Date.from(now.plusSeconds(900)))
+            .signWith(key)
+            .compact();
+}
     /** Login token (web or mobile). scope=access */
     public String createAccessToken(String subject, String userType, String channel) {
         Instant now=Instant.now();
