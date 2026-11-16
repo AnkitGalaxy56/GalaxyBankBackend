@@ -1,0 +1,19 @@
+Portal API security update
+
+Changes:
+- Explicitly permit GET /themes, /themes/** and /banks/{bankCode}/theme.
+- Explicitly authorize GET /dashboard/bank for ROLE_BANK_ADMIN, ROLE_ADMIN or ROLE_SUPER_ADMIN.
+- Explicitly authorize GET /dashboard/super-admin for ROLE_SUPER_ADMIN or ROLE_ADMIN.
+- Other endpoints remain authenticated; JWT validation and database token status checks remain enabled.
+
+Important limitations of the supplied archive:
+- The portal-api source in the supplied ZIP contains AuthController and RequestHandlingController only.
+- It does not contain DashboardController, ThemeController, or a theme service. This update does not invent dashboard/theme data endpoints. If these endpoints are expected to return data, their existing implementations must be added from the actual project source.
+- The supplied archive also does not include a Maven wrapper in portal-api. Build with an installed Maven 3.10+ and Java 21.
+
+Build/run:
+  cd portal-api
+  mvn clean package
+  mvn spring-boot:run
+
+Keep your existing local .env file beside pom.xml. It is intentionally not included in this ZIP because it may contain database credentials and JWT secrets.
