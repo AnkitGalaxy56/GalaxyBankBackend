@@ -23,6 +23,12 @@ public class LockerApplicationService {
         this.repository = repository;
     }
 
+    private Long getUserId(String customerNo) {
+        return repository.findUserIdByCustomerNo(customerNo)
+                .orElseThrow(() -> new LockerApplicationException(
+                        "Customer user ID not found"));
+    }
+
     private LockerApplicationResponse toResponse(
             LockerApplicationEntity entity, String message) {
 
@@ -34,32 +40,33 @@ public class LockerApplicationService {
                 entity.getCustomerNo(),
                 entity.getAccountNo(),
                 entity.getOperationYears() == null
-                        ? null : entity.getOperationYears().intValue(),
+                        ? null
+                        : entity.getOperationYears().intValue(),
                 entity.getReqStatus(),
                 entity.getCreatedOn()
         );
     }
 
-    // 1. Submit locker application
-
     @Transactional
     public LockerApplicationResponse applyLocker(
             LockerApplicationRequest request,
-            Long userId) {
+            String customerNo) {
+
+        Long userId = getUserId(customerNo);
 
         if (request.getOperationYears() == null
                 || request.getOperationYears() < 1
                 || request.getOperationYears() > 25) {
-
             throw new LockerApplicationException(
                     "Operation period must be between 1 and 25 years");
         }
 
         boolean duplicate = repository
                 .existsByCustomerNoAndAccountNoAndReqStatus(
-                        request.getCustomerNo(),
+                        customerNo,
                         request.getAccountNo(),
-                        "PENDING");
+                        "PENDING"
+                );
 
         if (duplicate) {
             throw new LockerApplicationException(
@@ -70,16 +77,14 @@ public class LockerApplicationService {
                 new LockerApplicationEntity();
 
         entity.setBranchCode(request.getBranchCode());
-        entity.setCustomerNo(request.getCustomerNo());
+        entity.setCustomerNo(customerNo);
         entity.setAccountNo(request.getAccountNo());
         entity.setAccountStatus(request.getAccountStatus());
         entity.setAccountType(request.getAccountType());
         entity.setMobile(request.getMobile());
         entity.setEmail(request.getEmail());
-
         entity.setOperationYears(
                 request.getOperationYears().shortValue());
-               
 
         entity.setReqStatus("PENDING");
         entity.setCreatedBy(userId);
@@ -92,48 +97,49 @@ public class LockerApplicationService {
                 "Locker application submitted successfully");
     }
 
-    // 2. View customer's applications
-
     @Transactional(readOnly = true)
     public List<LockerApplicationResponse> getMyApplications(
-            Long userId) {
+            String customerNo) {
+
+        Long userId = getUserId(customerNo);
 
         return repository
                 .findByCreatedByOrderByCreatedOnDesc(userId)
                 .stream()
                 .map(entity -> toResponse(
-                        entity, "Locker application details"))
+                        entity,
+                        "Locker application details"))
                 .toList();
     }
-
-    // 3. View application by ID
 
     @Transactional(readOnly = true)
     public LockerApplicationResponse getApplication(
             Long applicationId,
-            Long userId) {
+            String customerNo) {
+
+        Long userId = getUserId(customerNo);
 
         LockerApplicationEntity entity = repository
                 .findByIdAndCreatedBy(applicationId, userId)
-                .orElseThrow(() ->
-                        new LockerApplicationException(
-                                "Locker application not found"));
+                .orElseThrow(() -> new LockerApplicationException(
+                        "Locker application not found"));
 
-        return toResponse(entity, "Locker application details");
+        return toResponse(
+                entity,
+                "Locker application details");
     }
-
-    // 4. Cancel pending application
 
     @Transactional
     public LockerApplicationResponse cancelApplication(
             Long applicationId,
-            Long userId) {
+            String customerNo) {
+
+        Long userId = getUserId(customerNo);
 
         LockerApplicationEntity entity = repository
                 .findByIdAndCreatedBy(applicationId, userId)
-                .orElseThrow(() ->
-                        new LockerApplicationException(
-                                "Locker application not found"));
+                .orElseThrow(() -> new LockerApplicationException(
+                        "Locker application not found"));
 
         if (!"PENDING".equalsIgnoreCase(entity.getReqStatus())) {
             throw new LockerApplicationException(

@@ -32,7 +32,7 @@ public class LockerApplicationController {
         this.service = service;
     }
 
-    private Long getAuthenticatedUserId(
+    private String getAuthenticatedCustomerNo(
             Authentication authentication) {
 
         if (authentication == null
@@ -41,45 +41,35 @@ public class LockerApplicationController {
                     "Authentication required");
         }
 
-        try {
-            return Long.parseLong(authentication.getName());
-        } catch (NumberFormatException ex) {
-            throw new LockerApplicationException(
-                    "JWT subject is not a numeric user ID. "
-                    + "Configure the user ID from your JWT principal.");
-        }
+        return authentication.getName();
     }
-
-    // POST: Apply for locker
 
     @PostMapping("/apply")
     public ResponseEntity<LockerApplicationResponse> applyLocker(
             @Valid @RequestBody LockerApplicationRequest request,
             Authentication authentication) {
 
-        Long userId = getAuthenticatedUserId(authentication);
+        String customerNo =
+                getAuthenticatedCustomerNo(authentication);
 
         LockerApplicationResponse response =
-                service.applyLocker(request, userId);
+                service.applyLocker(request, customerNo);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(response);
     }
 
-    // GET: View my applications
-
     @GetMapping("/my-applications")
     public ResponseEntity<List<LockerApplicationResponse>>
             getMyApplications(Authentication authentication) {
 
-        Long userId = getAuthenticatedUserId(authentication);
+        String customerNo =
+                getAuthenticatedCustomerNo(authentication);
 
         return ResponseEntity.ok(
-                service.getMyApplications(userId));
+                service.getMyApplications(customerNo));
     }
-
-    // GET: View application by ID
 
     @GetMapping("/{id}")
     public ResponseEntity<LockerApplicationResponse>
@@ -87,13 +77,12 @@ public class LockerApplicationController {
                     @PathVariable Long id,
                     Authentication authentication) {
 
-        Long userId = getAuthenticatedUserId(authentication);
+        String customerNo =
+                getAuthenticatedCustomerNo(authentication);
 
         return ResponseEntity.ok(
-                service.getApplication(id, userId));
+                service.getApplication(id, customerNo));
     }
-
-    // PUT: Cancel application
 
     @PutMapping("/{id}/cancel")
     public ResponseEntity<LockerApplicationResponse>
@@ -101,9 +90,10 @@ public class LockerApplicationController {
                     @PathVariable Long id,
                     Authentication authentication) {
 
-        Long userId = getAuthenticatedUserId(authentication);
+        String customerNo =
+                getAuthenticatedCustomerNo(authentication);
 
         return ResponseEntity.ok(
-                service.cancelApplication(id, userId));
+                service.cancelApplication(id, customerNo));
     }
 }
