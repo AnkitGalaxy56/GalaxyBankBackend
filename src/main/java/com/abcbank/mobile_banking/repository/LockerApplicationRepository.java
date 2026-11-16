@@ -2,36 +2,127 @@
 package com.abcbank.mobile_banking.repository;
 
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import com.abcbank.mobile_banking.entity.LockerApplicationEntity;
-
 @Repository
-public interface LockerApplicationRepository
-        extends JpaRepository<LockerApplicationEntity, Long> {
+public class LockerApplicationRepository {
 
-    List<LockerApplicationEntity>
-            findByCreatedByOrderByCreatedOnDesc(Long createdBy);
+    private final JdbcTemplate jdbc;
 
-    Optional<LockerApplicationEntity>
-            findByIdAndCreatedBy(Long id, Long createdBy);
+    public LockerApplicationRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
 
-    boolean existsByCustomerNoAndAccountNoAndReqStatus(
+    // Supports JWT subject containing either user_id or customer_no.
+    public Map<String, Object> customerByPrincipal(String principal) {
+
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT user_id, customer_no
+            FROM public."MB001001"
+            WHERE status = 'ACTIVE'
+              AND user_role = 'CUSTOMER'
+              AND (
+                    customer_no = ?
+                    OR user_id::text = ?
+              )
+            """, principal, principal);
+
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Active customer was not found for this login");
+        }
+
+        return rows.get(0);
+    }
+
+    public Map<String, Object> activeSavingsAccount(
+            String accountNo, String customerNo) {
+
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+            SELECT account_no, customer_no, branch_code,
+                   account_type, account_status
+            FROM public."MB002003"
+            WHERE account_no = ?
+              AND customer_no = ?
+              AND UPPER(account_type) = 'SAVINGS'
+              AND UPPER(account_status) = 'ACTIVE'
+            """, accountNo, customerNo);
+
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Active Savings account was not found for this customer");
+        }
+
+        return rows.get(0);
+    }
+
+    public boolean hasPendingApplication(
+            String customerNo, String accountNo) {
+
+        Integer count = jdbc.queryForObject("""
+            SELECT COUNT(*)
+            FROM public."MB004009"
+            WHERE customer_no = ?
+              AND account_no = ?
+              AND UPPER(req_status::text) = 'PENDING'
+            """, Integer.class, customerNo, accountNo);
+
+        return count != null && count > 0;
+    }
+
+    public Long insertApplication(
+            String branchCode,
             String customerNo,
             String accountNo,
-            String reqStatus);
+            String accountStatus,
+            String accountType,
+            String mobile,
+            String email,
+            int operationYears,
+            String lockerType,
+            String operationMode,
+            String nomineeName,
+            Long userId) {
 
-    @Query(value = """
-            SELECT user_id
-            FROM public."MB001001"
-            WHERE customer_no = :customerNo
-              AND user_type = 'CU'
-            """, nativeQuery = true)
-    Optional<Long> findUserIdByCustomerNo(
-            @Param("customerNo") String customerNo);
+        return jdbc.queryForObject("""
+            INSERT INTO public."MB004009"
+            (
+                branch_code,
+                customer_no,
+                account_no,
+                account_status,
+                account_type,
+                req_status,
+                mobile,
+                email,
+                operation_yrs,
+                locker_type,
+                operation_mode,
+                nominee_name,
+                created_by,
+                created_on
+            )
+            VALUES (
+                ?, ?, ?, ?, ?, 'PENDING',
+                ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+            )
+            RETURNING id
+            """,
+            Long.class,
+            branchCode,
+            customerNo,
+            accountNo,
+            accountStatus,
+            accountType,
+            mobile,
+            email,
+            operationYears,
+            lockerType,
+            operationMode,
+            nomineeName,
+            userId);
+    }
 }

@@ -1,5 +1,6 @@
 
 package com.abcbank.mobile_banking.config;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -13,56 +14,69 @@ import com.abcbank.mobile_banking.security.JwtAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter) throws Exception {
-        return http.csrf(csrf -> csrf.disable())
-          .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-          .authorizeHttpRequests(a -> a
-    .requestMatchers(
-        "/api/v1/registration/start",
-        "/api/v1/registration/verify-otp",
-        "/actuator/health"
-    ).permitAll()
 
-    .requestMatchers(
-        "/api/v1/auth/web/login",
-        "/api/v1/auth/mpin/login",
-        "/api/v1/auth/forgot-mpin/request",
-        "/api/v1/auth/forgot-mpin/verify-otp"
-    ).permitAll()
+    @Bean
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            JwtAuthenticationFilter jwtFilter) throws Exception {
 
-    .requestMatchers("/api/v1/auth/forgot-mpin/reset")
-        .hasAuthority("SCOPE_mpin:reset")
+        return http
+                .csrf(csrf -> csrf.disable())
 
-    .requestMatchers("/api/v1/registration/complete")
-        .hasAuthority("SCOPE_registration:complete")
+                .sessionManagement(s ->
+                        s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-    .requestMatchers("/api/v1/transfers/**")
-        .hasAuthority("SCOPE_fund:transfer")
+                .authorizeHttpRequests(a -> a
 
-    .requestMatchers("/api/v1/requests/stop-payment")
-        .hasAuthority("SCOPE_fund:transfer")
+                        .requestMatchers(
+                                "/api/v1/registration/start",
+                                "/api/v1/registration/verify-otp",
+                                "/actuator/health"
+                        ).permitAll()
 
-    .anyRequest().authenticated()
-)
-           // .requestMatchers("/api/v1/registration/start", "/api/v1/registration/verify-otp", "/actuator/health").permitAll()
-            // LOGIN + FORGOT MPIN (added)
-            //.requestMatchers("/api/v1/auth/web/login", "/api/v1/auth/mpin/login",
-            //                 "/api/v1/auth/forgot-mpin/request", "/api/v1/auth/forgot-mpin/verify-otp").permitAll()
-            //.requestMatchers("/api/v1/auth/forgot-mpin/reset").hasAuthority("SCOPE_mpin:reset")
-            //.requestMatchers("/api/v1/registration/complete").hasAuthority("SCOPE_registration:complete")
-            // only a real login token may use banking APIs (registration / reset tokens may not)
-           // .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_fund:transfer")
-           // .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_access")
-           // .anyRequest().authenticated())
-          .httpBasic(b -> b.disable()).formLogin(f -> f.disable())
-          .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
+                        .requestMatchers(
+                                "/api/v1/auth/web/login",
+                                "/api/v1/auth/mpin/login",
+                                "/api/v1/auth/forgot-mpin/request",
+                                "/api/v1/auth/forgot-mpin/verify-otp"
+                        ).permitAll()
 
-          
+                        .requestMatchers("/api/v1/auth/forgot-mpin/reset")
+                        .hasAuthority("SCOPE_mpin:reset")
+
+                        .requestMatchers("/api/v1/registration/complete")
+                        .hasAuthority("SCOPE_registration:complete")
+
+                        .requestMatchers("/api/v1/transfers/**")
+                        .hasAuthority("SCOPE_fund:transfer")
+
+                        .requestMatchers("/api/v1/requests/stop-payment")
+                        .hasAuthority("SCOPE_fund:transfer")
+
+                        // Corrected customer role
+                        .requestMatchers("/api/v1/deposits/**")
+                        .hasRole("CUSTOMER")
+
+
+                        .requestMatchers("/api/v1/locker/**")
+                       .hasRole("CUSTOMER")
+
+                        .anyRequest().authenticated()
+                )
+
+                .httpBasic(b -> b.disable())
+                .formLogin(f -> f.disable())
+
+                .addFilterBefore(
+                        jwtFilter,
+                        UsernamePasswordAuthenticationFilter.class
+                )
+
+                .build();
     }
 
     @Bean
-    PasswordEncoder passwordEncoder() 
-    {
+    PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
     }
 }
