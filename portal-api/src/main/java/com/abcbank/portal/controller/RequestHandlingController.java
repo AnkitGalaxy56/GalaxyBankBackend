@@ -54,7 +54,7 @@ public class RequestHandlingController {
     private static final Set<String> PORTAL_ROLES = Set.of("ADMIN", "SUPER_ADMIN", "STAFF", "USER");
     private static final List<String> NOT_OPERATIVE = List.of("CLOS", "FROZ", "BLOCK", "DORMANT", "INOP", "SUSP");
     private static final String NAME_JOIN =
-            "left join (select distinct on (customer_no) customer_no, full_name from public.\"MB001001\" "
+            "left join (select distinct on (customer_no) customer_no, full_name, mobile from public.\"MB001001\" "
                     + "where customer_no is not null order by customer_no) u on u.customer_no = %1$s.customer_no "
                     + "left join public.\"MB002002\" b on b.branch_code = %1$s.branch_code";
 
@@ -125,7 +125,7 @@ public class RequestHandlingController {
             for (int i = 0; i < parts.size(); i++) args.add(like);
         }
 
-        String sql = "select t.*, u.full_name as _customer_name, b.branch_name as _branch_name, count(*) over() as _total from "
+        String sql = "select t.*, u.full_name as _customer_name, u.mobile as _customer_mobile, b.branch_name as _branch_name, count(*) over() as _total from "
                 + m.qualified() + " t " + String.format(NAME_JOIN, "t") + where
                 + " order by t.created_on desc, t.id desc limit ? offset ?";
         args.add(size);
@@ -155,7 +155,7 @@ public class RequestHandlingController {
         String scope = "";
         if (!who.admin()) { scope = " and t.branch_code = ?"; args.add(who.branch()); }
         List<Map<String, Object>> rows = db.queryForList(
-                "select t.*, u.full_name as _customer_name, b.branch_name as _branch_name from " + m.qualified() + " t "
+                "select t.*, u.full_name as _customer_name, u.mobile as _customer_mobile, b.branch_name as _branch_name from " + m.qualified() + " t "
                         + String.format(NAME_JOIN, "t") + " where t.id = ?" + scope, args.toArray());
         if (rows.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "Request not found.");
         return record(m, cols, rows.get(0), who, false);
@@ -176,6 +176,13 @@ public class RequestHandlingController {
         Map<String, String> errors = new LinkedHashMap<>();
         Map<String, Object> v = parseFields(m, cols, body, true, errors);
         if (errors.isEmpty()) resolveIdentity(m, cols, who, v, errors);
+        // Requests submitted from this portal are Control Panel-originated.
+        // Older installations use SMALLINT (1 = Mobile App, 2 = Control Panel),
+        // while some databases define is_sys as BOOLEAN (false = Mobile App, true = Control Panel).
+        // Detect the actual database type so the INSERT parameter always matches it.
+        if (errors.isEmpty() && "PAY".equals(m.prefix()) && cols.contains("is_sys")) {
+            v.put("is_sys", isBooleanColumn(m, "is_sys") ? Boolean.TRUE : 2);
+        }
         if (errors.isEmpty()) applyRules(m, cols, true, v, Map.of(), errors);
         if (!errors.isEmpty()) throw new ApiException(HttpStatus.BAD_REQUEST, "Please correct the highlighted fields.", errors);
 
@@ -184,7 +191,7 @@ public class RequestHandlingController {
         List<String> names = new ArrayList<>(v.keySet());
         String sql = "with ins as (insert into " + m.qualified() + " (" + quoted(names) + ") values ("
                 + String.join(",", Collections.nCopies(names.size(), "?")) + ") returning *) "
-                + "select ins.*, u.full_name as _customer_name, b.branch_name as _branch_name from ins "
+                + "select ins.*, u.full_name as _customer_name, u.mobile as _customer_mobile, b.branch_name as _branch_name from ins "
                 + String.format(NAME_JOIN, "ins");
         List<Map<String, Object>> rows = db.queryForList(sql, names.stream().map(v::get).toArray());
         Map<String, Object> row = rows.get(0);
@@ -233,7 +240,7 @@ public class RequestHandlingController {
 
         String sql = "with upd as (update " + m.qualified() + " t set " + String.join(", ", sets)
                 + " where t.id = ? and t.req_status = ?" + scope + " returning t.*) "
-                + "select upd.*, u.full_name as _customer_name, b.branch_name as _branch_name from upd "
+                + "select upd.*, u.full_name as _customer_name, u.mobile as _customer_mobile, b.branch_name as _branch_name from upd "
                 + String.format(NAME_JOIN, "upd");
         List<Map<String, Object>> rows = db.queryForList(sql, args.toArray());
         if (rows.isEmpty()) throw new ApiException(HttpStatus.CONFLICT, "This request was changed by someone else. Reload and try again.");
@@ -276,7 +283,7 @@ public class RequestHandlingController {
         if (!who.admin()) { scope = " and t.branch_code = ?"; args.add(who.branch()); }
         String sql = "with upd as (update " + m.qualified() + " t set req_status = ?, verified_by = ?, verified_on = now(), "
                 + "modified_by = ?, modified_on = now() where t.id = ? and t.req_status = 'PENDING'" + scope + " returning t.*) "
-                + "select upd.*, u.full_name as _customer_name, b.branch_name as _branch_name from upd "
+                + "select upd.*, u.full_name as _customer_name, u.mobile as _customer_mobile, b.branch_name as _branch_name from upd "
                 + String.format(NAME_JOIN, "upd");
         List<Map<String, Object>> rows = db.queryForList(sql, args.toArray());
         if (rows.isEmpty()) throw new ApiException(HttpStatus.CONFLICT, "This request was already processed by someone else.");
@@ -306,7 +313,7 @@ public class RequestHandlingController {
         if (!who.admin()) { scope = " and t.branch_code = ?"; args.add(who.branch()); }
         String sql = "with upd as (update " + m.qualified() + " t set req_status = 'CANCELLED', modified_by = ?, modified_on = now() "
                 + "where t.id = ? and t.req_status = 'PENDING'" + scope + " returning t.*) "
-                + "select upd.*, u.full_name as _customer_name, b.branch_name as _branch_name from upd "
+                + "select upd.*, u.full_name as _customer_name, u.mobile as _customer_mobile, b.branch_name as _branch_name from upd "
                 + String.format(NAME_JOIN, "upd");
         List<Map<String, Object>> rows = db.queryForList(sql, args.toArray());
         if (rows.isEmpty()) throw new ApiException(HttpStatus.CONFLICT, "This request was already processed.");
@@ -368,6 +375,14 @@ public class RequestHandlingController {
         Set<String> s = c.get(m.table());
         if (s == null || s.isEmpty()) throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "This module's database table is not available.");
         return s;
+    }
+
+    private boolean isBooleanColumn(Module m, String column) {
+        String dataType = db.queryForObject(
+                "select data_type from information_schema.columns " +
+                "where table_schema = 'public' and table_name = ? and column_name = ?",
+                String.class, m.table(), column);
+        return "boolean".equalsIgnoreCase(dataType);
     }
 
     private List<Field> active(Module m, Set<String> cols) {
@@ -604,11 +619,23 @@ public class RequestHandlingController {
             Object raw = row.get(f.column);
             if (raw == null) continue;
             String s = fmt(raw);
+            if ("is_sys".equals(f.column)) {
+                boolean controlPanel = raw instanceof Boolean
+                        ? Boolean.TRUE.equals(raw)
+                        : "2".equals(s);
+                s = controlPanel ? "Control Panel" : "Mobile App";
+            }
             if (mask && f.mask) s = maskValue(s);
             for (String a : f.aliases) fields.put(a, s);
         }
         String customer = str(row.get("_customer_name"));
         if (customer != null) for (String a : m.nameAliases()) fields.putIfAbsent(a, customer);
+        // Payment requests display the account holder's registered mobile from MB001001.
+        // The payment table stores the customer number, not a separate mobile column.
+        if ("rtgs-neft-imps".equals(m.key())) {
+            String customerMobile = str(row.get("_customer_mobile"));
+            if (customerMobile != null) fields.put("mobile", customerMobile);
+        }
         String customerNo = str(row.get("customer_no"));
         if (customerNo != null) fields.putIfAbsent("customerNo", customerNo);
         String branchCode = str(row.get("branch_code"));

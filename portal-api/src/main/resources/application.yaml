@@ -1,4 +1,8 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 12MB
   config:
     import: optional:file:./.env[.properties]
   application:
@@ -28,6 +32,7 @@ portal:
   jwt:
     secret: ${PORTAL_JWT_SECRET}
     ttl-minutes: ${PORTAL_JWT_TTL_MINUTES:30}
+    refresh-ttl-hours: ${PORTAL_REFRESH_TOKEN_TTL_HOURS:8}
   otp:
     value: ${PORTAL_LOGIN_OTP:123456}
     ttl-minutes: ${PORTAL_OTP_TTL_MINUTES:5}

@@ -45,7 +45,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 
                         .requestMatchers(HttpMethod.POST,
-                                "/auth/login", "/auth/verify-otp").permitAll()
+                                "/auth/login", "/auth/verify-otp", "/auth/refresh").permitAll()
 
                         .requestMatchers(HttpMethod.GET,
                                 "/themes", "/themes/**", "/banks/*/theme").permitAll()

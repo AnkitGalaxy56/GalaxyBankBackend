@@ -101,6 +101,7 @@ public final class RequestModules {
                         str("ben_ifsc", "ifsc", "beneficiaryIfsc").req().upper().max(11).re(IFSC, "Enter a valid IFSC code (e.g. HDFC0001234)."),
                         dec("amount", "amount").req().min("0.01"),
                         str("remarks", "remarks").max(255),
+                        integer("is_sys", "isSys").ro(),
                         str("account_status", "accountStatus", "debitStatus").ro()));
         add(pay, "rtgs-neft-imps", "payments");
 
@@ -177,7 +178,7 @@ public final class RequestModules {
         Module close = new Module("closing-accounts", "MB004007", "FDC", Resolve.ACCOUNT, "account_status", "account_type", "account_no",
                 List.of("name", "customer", "customerName", "creditName"),
                 List.of(
-                        str("account_no", "creditAccountId", "creditAccount").req().id().mask().re(ACCOUNT, "Enter a valid credit account number."),
+                        str("account_no", "creditAccountId", "creditAccount", "accountNo").req().id().mask().re(ACCOUNT, "Enter a valid credit account number."),
                         str("fd_acid", "debitAccountId", "account", "debitAccount").req().owned().mask().max(30).re(ACCOUNT, "Enter a valid deposit account number."),
                         date("cert_date", "certificateDate"),
                         date("asof_date", "asOfDate"),

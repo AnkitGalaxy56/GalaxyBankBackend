@@ -1,5 +1,10 @@
 package com.abcbank.portal.requests;
 
+import com.abcbank.portal.controller.DeviceResetController;
+import com.abcbank.portal.controller.MastersController;
+import com.abcbank.portal.controller.MobileImagesController;
+import com.abcbank.portal.controller.PushNotificationsController;
+import com.abcbank.portal.controller.ThemeController;
 import com.abcbank.portal.controller.RequestHandlingController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +23,7 @@ import java.util.UUID;
  * Error handling for the request-handling API only (other controllers are unaffected).
  * Messages are always client-safe: SQL text and stack traces never reach the response.
  */
-@RestControllerAdvice(assignableTypes = RequestHandlingController.class)
+@RestControllerAdvice(assignableTypes = {RequestHandlingController.class, MastersController.class, MobileImagesController.class, PushNotificationsController.class, DeviceResetController.class, ThemeController.class})
 public class RequestExceptionAdvice {
     private static final Logger log = LoggerFactory.getLogger(RequestExceptionAdvice.class);
 
