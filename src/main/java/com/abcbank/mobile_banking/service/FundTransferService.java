@@ -34,7 +34,8 @@ public class FundTransferService {
             FundTransferRequest request) {
 
         if (customerId == null || customerId.isBlank()) {
-            throw new IllegalArgumentException("Invalid customer authentication.");
+            throw new IllegalArgumentException(
+                    "Invalid customer authentication.");
         }
 
         // 1. Confirm beneficiary account numbers
@@ -136,7 +137,7 @@ public class FundTransferService {
         String bankName =
                 String.valueOf(beneficiary.get("bank_name"));
 
-        // 7. Save transfer request
+        // 7. Create mobile banking transfer request
         FundTransferRequestEntity entity =
                 new FundTransferRequestEntity(
                         String.valueOf(debit.get("branch_code")),
@@ -154,15 +155,25 @@ public class FundTransferService {
                         createdBy
                 );
 
-        FundTransferRequestEntity saved = repository.save(entity);
+        // Mobile App = true in PostgreSQL BOOLEAN column
+        entity.setIsSys(true);
+
+        FundTransferRequestEntity saved =
+                repository.save(entity);
+
+        // Convert Boolean back to existing API response code
+        Integer requestSource = Boolean.TRUE.equals(saved.getIsSys())
+                ? 1
+                : 2;
 
         // 8. Return response
         return new FundTransferResponse(
                 saved.getId(),
                 saved.getReqStatus(),
                 mode,
-               request.amount(),
+                request.amount(),
                 saved.getCreatedOn(),
+                requestSource,
                 "Transfer request submitted successfully. "
                 + "Awaiting bank processing."
         );

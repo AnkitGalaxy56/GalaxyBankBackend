@@ -1663,3 +1663,116 @@ BEGIN
         REFERENCES public."MB002003" (account_no, customer_no);
     END IF;
 END $$;
+
+
+ALTER TABLE "MB004001"
+ADD COLUMN is_sys SMALLINT NOT NULL DEFAULT 1;
+
+ALTER TABLE "MB004001"
+ADD CONSTRAINT chk_mb004001_is_sys
+CHECK (is_sys IN (1, 2));
+
+COMMENT ON COLUMN "MB004001".is_sys IS
+'1 = Mobile App, 2 = Control Panel';
+
+ALTER TABLE public."MB004001"
+ALTER COLUMN is_sys SET DEFAULT FALSE;
+
+
+
+CREATE TABLE IF NOT EXISTS public."MB004011" (
+    id BIGSERIAL PRIMARY KEY,
+
+    branch_code VARCHAR(20) NOT NULL,
+    customer_no VARCHAR(30) NOT NULL,
+
+    beneficiary_name VARCHAR(150) NOT NULL,
+    beneficiary_account VARCHAR(34) NOT NULL,
+    beneficiary_bank VARCHAR(150) NOT NULL,
+    beneficiary_ifsc ifsc_t NOT NULL,
+
+    single_transaction_limit NUMERIC(18,2) NOT NULL
+        CHECK (single_transaction_limit > 0),
+
+    beneficiary_email VARCHAR(254),
+
+    req_status req_status_t NOT NULL DEFAULT 'PENDING',
+
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_by BIGINT NOT NULL,
+    created_on TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    modified_by BIGINT,
+    modified_on TIMESTAMPTZ,
+
+    verified_by BIGINT,
+    verified_on TIMESTAMPTZ,
+
+    CONSTRAINT fk_mb004011_branch
+        FOREIGN KEY (branch_code)
+        REFERENCES public."MB002002"(branch_code),
+
+    CONSTRAINT fk_mb004011_customer
+        FOREIGN KEY (customer_no)
+        REFERENCES public.mb001001cr(customer_id),
+
+    CONSTRAINT fk_mb004011_created
+        FOREIGN KEY (created_by)
+        REFERENCES public."MB001001"(user_id),
+
+    CONSTRAINT fk_mb004011_modified
+        FOREIGN KEY (modified_by)
+        REFERENCES public."MB001001"(user_id),
+
+    CONSTRAINT fk_mb004011_verified
+        FOREIGN KEY (verified_by)
+        REFERENCES public."MB001001"(user_id),
+
+    CONSTRAINT chk_mb004011_maker_checker
+        CHECK (verified_by IS NULL OR verified_by <> created_by),
+
+    CONSTRAINT chk_mb004011_verify_pair
+        CHECK ((verified_by IS NULL) = (verified_on IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mb004011_customer
+ON public."MB004011"(customer_no, created_on DESC);
+
+CREATE INDEX IF NOT EXISTS idx_mb004011_status
+ON public."MB004011"(req_status);
+
+CREATE TABLE IF NOT EXISTS public."MB004012" (
+    id BIGSERIAL PRIMARY KEY,
+
+    beneficiary_id BIGINT NOT NULL,
+    customer_no VARCHAR(30) NOT NULL,
+
+    otp_hash VARCHAR(255) NOT NULL,
+
+    expires_at TIMESTAMPTZ NOT NULL,
+
+    attempts INTEGER NOT NULL DEFAULT 0
+        CHECK (attempts >= 0 AND attempts <= 5),
+
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+
+    created_on TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_mb004012_beneficiary
+        FOREIGN KEY (beneficiary_id)
+        REFERENCES public."MB004011"(id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_mb004012_customer
+        FOREIGN KEY (customer_no)
+        REFERENCES public.mb001001cr(customer_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mb004012_beneficiary
+ON public."MB004012"(beneficiary_id, created_on DESC);
+
+CREATE INDEX IF NOT EXISTS idx_mb004012_customer
+ON public."MB004012"(customer_no);
+

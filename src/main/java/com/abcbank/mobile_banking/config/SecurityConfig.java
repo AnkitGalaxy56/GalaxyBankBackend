@@ -53,13 +53,15 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/requests/stop-payment")
                         .hasAuthority("SCOPE_fund:transfer")
 
-                        // Corrected customer role
                         .requestMatchers("/api/v1/deposits/**")
                         .hasRole("CUSTOMER")
 
-
                         .requestMatchers("/api/v1/locker/**")
-                       .hasRole("CUSTOMER")
+                        .hasRole("CUSTOMER")
+
+                        // Beneficiary APIs
+                        .requestMatchers("/api/v1/beneficiaries/**")
+                        .hasRole("CUSTOMER")
 
                            .requestMatchers("/api/v1/positive-pay/**")
 .hasRole("CUSTOMER")

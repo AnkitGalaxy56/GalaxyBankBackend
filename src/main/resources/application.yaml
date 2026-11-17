@@ -1,3 +1,4 @@
+
 spring:
   config:
     import: optional:file:./.env[.properties]
@@ -11,13 +12,29 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
- 
-
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
     show-sql: true
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 security:
   jwt:
@@ -30,6 +47,10 @@ app:
 
   registration:
     otp-bypass-enabled: ${OTP_BYPASS_ENABLED:false}
+
+  kyc:
+    storage-location: uploads/kyc
+    max-file-size-bytes: 5242880
 
 server:
   port: 8080

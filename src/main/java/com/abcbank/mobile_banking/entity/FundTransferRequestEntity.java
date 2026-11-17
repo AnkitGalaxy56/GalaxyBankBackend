@@ -1,3 +1,4 @@
+
 package com.abcbank.mobile_banking.entity;
 
 import java.math.BigDecimal;
@@ -69,6 +70,11 @@ public class FundTransferRequestEntity {
     @Column(name = "created_on", nullable = false)
     private Instant createdOn = Instant.now();
 
+    // true = Mobile App (1)
+    // false = Control Panel (2)
+    @Column(name = "is_sys")
+    private Boolean isSys = true;
+
     public FundTransferRequestEntity(
             String branchCode,
             String customerNo,
@@ -97,6 +103,9 @@ public class FundTransferRequestEntity {
         this.amount = amount;
         this.remarks = remarks;
         this.createdBy = createdBy;
+
+        // Mobile App
+        this.isSys = true;
     }
 
     protected FundTransferRequestEntity() {
@@ -110,7 +119,75 @@ public class FundTransferRequestEntity {
         return reqStatus.name();
     }
 
+    public void setReqStatus(RequestStatus reqStatus) {
+        this.reqStatus = reqStatus;
+    }
+
     public Instant getCreatedOn() {
         return createdOn;
+    }
+
+    public String getBranchCode() {
+        return branchCode;
+    }
+
+    public String getCustomerNo() {
+        return customerNo;
+    }
+
+    public String getAccountNo() {
+        return accountNo;
+    }
+
+    public String getAccountStatus() {
+        return accountStatus;
+    }
+
+    public String getAccountType() {
+        return accountType;
+    }
+
+    public String getIfscCode() {
+        return ifscCode;
+    }
+
+    public String getPayMode() {
+        return payMode;
+    }
+
+    public String getBeneficiaryName() {
+        return beneficiaryName;
+    }
+
+    public String getBeneficiaryAccount() {
+        return beneficiaryAccount;
+    }
+
+    public String getBeneficiaryBank() {
+        return beneficiaryBank;
+    }
+
+    public String getBeneficiaryIfsc() {
+        return beneficiaryIfsc;
+    }
+
+    public BigDecimal getAmount() {
+        return amount;
+    }
+
+    public String getRemarks() {
+        return remarks;
+    }
+
+    public Long getCreatedBy() {
+        return createdBy;
+    }
+
+    public Boolean getIsSys() {
+        return isSys;
+    }
+
+    public void setIsSys(Boolean isSys) {
+        this.isSys = isSys;
     }
 }

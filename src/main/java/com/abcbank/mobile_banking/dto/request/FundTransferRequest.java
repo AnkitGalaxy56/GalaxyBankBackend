@@ -18,8 +18,10 @@ public record FundTransferRequest(
     String debitAccountId,
 
     @NotBlank
-    @Pattern(regexp = "(?i)RTGS|NEFT|IMPS",
-             message = "Payment mode must be RTGS, NEFT or IMPS")
+    @Pattern(
+        regexp = "(?i)RTGS|NEFT|IMPS",
+        message = "Payment mode must be RTGS, NEFT or IMPS"
+    )
     String paymentMode,
 
     @NotBlank
@@ -35,13 +37,17 @@ public record FundTransferRequest(
     String reConfirmAccountNo,
 
     @NotBlank
-    @Pattern(regexp = "(?i)[A-Z]{4}0[A-Z0-9]{6}",
-             message = "Invalid IFSC code")
+    @Pattern(
+        regexp = "(?i)[A-Z]{4}0[A-Z0-9]{6}",
+        message = "Invalid IFSC code"
+    )
     String ifscCode,
 
     @NotBlank
-    @Pattern(regexp = "[6-9][0-9]{9}",
-             message = "Invalid mobile number")
+    @Pattern(
+        regexp = "[6-9][0-9]{9}",
+        message = "Invalid mobile number"
+    )
     String mobileNo,
 
     @NotNull
