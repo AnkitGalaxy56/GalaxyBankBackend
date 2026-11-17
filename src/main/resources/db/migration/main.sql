@@ -1455,3 +1455,211 @@ CREATE TABLE IF NOT EXISTS registration_challenges (
 );
 CREATE INDEX IF NOT EXISTS idx_reg_challenge_customer 
 ON registration_challenges(customer_id, created_at DESC);
+
+
+
+
+-- =========================================================
+-- 1. FD/RD SCHEME MASTER
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS public."MB002004" (
+    scheme_id BIGSERIAL PRIMARY KEY,
+
+    prod_code VARCHAR(20) NOT NULL,
+    prod_name VARCHAR(100) NOT NULL,
+    scheme_code VARCHAR(20) NOT NULL UNIQUE,
+    scheme_name VARCHAR(100) NOT NULL,
+
+    -- FD or RD
+    deposit_type VARCHAR(2) NOT NULL
+        CHECK (deposit_type IN ('FD', 'RD')),
+
+    min_deposit NUMERIC(18,2) NOT NULL CHECK (min_deposit > 0),
+    max_deposit NUMERIC(18,2)
+        CHECK (max_deposit IS NULL OR max_deposit >= min_deposit),
+
+    min_tenure_months INTEGER NOT NULL CHECK (min_tenure_months > 0),
+    max_tenure_months INTEGER NOT NULL
+        CHECK (max_tenure_months >= min_tenure_months),
+
+    interest_rate NUMERIC(7,4) NOT NULL
+        CHECK (interest_rate >= 0),
+
+    -- 1=monthly, 2=quarterly, 4=half-yearly, 12=yearly
+    compounding_frequency SMALLINT NOT NULL DEFAULT 4
+        CHECK (compounding_frequency IN (1, 2, 4, 12)),
+
+    -- FD maturity calculation convention
+    interest_payout_frequency VARCHAR(20)
+        CHECK (interest_payout_frequency IN
+            ('CUMULATIVE', 'MONTHLY', 'QUARTERLY', 'YEARLY')),
+
+    effective_from DATE NOT NULL,
+    effective_to DATE,
+
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+    created_by BIGINT,
+    created_on TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    modified_by BIGINT,
+    modified_on TIMESTAMPTZ,
+
+    CONSTRAINT uq_mb002004_product_scheme
+        UNIQUE (prod_code, scheme_code),
+
+    CONSTRAINT chk_mb002004_effective_dates
+        CHECK (effective_to IS NULL OR effective_to >= effective_from),
+
+    CONSTRAINT fk_mb002004_created
+        FOREIGN KEY (created_by)
+        REFERENCES public."MB001001"(user_id),
+
+    CONSTRAINT fk_mb002004_modified
+        FOREIGN KEY (modified_by)
+        REFERENCES public."MB001001"(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mb002004_type_active
+ON public."MB002004"(deposit_type, is_active);
+
+-- =========================================================
+-- 2. ADD MISSING RD COLUMNS
+-- =========================================================
+
+ALTER TABLE public."MB004005"
+    ADD COLUMN IF NOT EXISTS cr_int_acid VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS maturity_acid VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS auto_renewal BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- =========================================================
+-- 3. ADD INTEREST AND MATURITY ACCOUNT FOREIGN KEYS
+-- =========================================================
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_mb004004_interest_account'
+    ) THEN
+        ALTER TABLE public."MB004004"
+        ADD CONSTRAINT fk_mb004004_interest_account
+        FOREIGN KEY (cr_int_acid, customer_no)
+        REFERENCES public."MB002003"(account_no, customer_no)
+        ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_mb004004_maturity_account'
+    ) THEN
+        ALTER TABLE public."MB004004"
+        ADD CONSTRAINT fk_mb004004_maturity_account
+        FOREIGN KEY (maturity_acid, customer_no)
+        REFERENCES public."MB002003"(account_no, customer_no)
+        ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_mb004005_interest_account'
+    ) THEN
+        ALTER TABLE public."MB004005"
+        ADD CONSTRAINT fk_mb004005_interest_account
+        FOREIGN KEY (cr_int_acid, customer_no)
+        REFERENCES public."MB002003"(account_no, customer_no)
+        ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_mb004005_maturity_account'
+    ) THEN
+        ALTER TABLE public."MB004005"
+        ADD CONSTRAINT fk_mb004005_maturity_account
+        FOREIGN KEY (maturity_acid, customer_no)
+        REFERENCES public."MB002003"(account_no, customer_no)
+        ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_mb004004_scheme
+ON public."MB004004"(scheme_code);
+
+CREATE INDEX IF NOT EXISTS idx_mb004005_scheme
+ON public."MB004005"(scheme_code);
+
+-- Identify whether the closure request is for FD or RD
+ALTER TABLE public."MB004007"
+ADD COLUMN IF NOT EXISTS deposit_type VARCHAR(2) NOT NULL DEFAULT 'FD';
+
+-- Account where closure proceeds should be credited
+ALTER TABLE public."MB004007"
+ADD COLUMN IF NOT EXISTS proceeds_account_no VARCHAR(30);
+
+-- Allow only FD and RD
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'chk_mb004007_deposit_type'
+    ) THEN
+        ALTER TABLE public."MB004007"
+        ADD CONSTRAINT chk_mb004007_deposit_type
+        CHECK (deposit_type IN ('FD', 'RD'));
+    END IF;
+END $$;
+
+-- Ensure same-bank proceeds account belongs to the same customer
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_mb004007_proceeds_account'
+    ) THEN
+        ALTER TABLE public."MB004007"
+        ADD CONSTRAINT fk_mb004007_proceeds_account
+        FOREIGN KEY (proceeds_account_no, customer_no)
+        REFERENCES public."MB002003" (account_no, customer_no);
+    END IF;
+END $$;
+
+
+-- Identify whether the closure request is for FD or RD
+ALTER TABLE public."MB004007"
+ADD COLUMN IF NOT EXISTS deposit_type VARCHAR(2) NOT NULL DEFAULT 'FD';
+
+-- Account where closure proceeds should be credited
+ALTER TABLE public."MB004007"
+ADD COLUMN IF NOT EXISTS proceeds_account_no VARCHAR(30);
+
+-- Allow only FD and RD
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'chk_mb004007_deposit_type'
+    ) THEN
+        ALTER TABLE public."MB004007"
+        ADD CONSTRAINT chk_mb004007_deposit_type
+        CHECK (deposit_type IN ('FD', 'RD'));
+    END IF;
+END $$;
+
+-- Ensure same-bank proceeds account belongs to the same customer
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_mb004007_proceeds_account'
+    ) THEN
+        ALTER TABLE public."MB004007"
+        ADD CONSTRAINT fk_mb004007_proceeds_account
+        FOREIGN KEY (proceeds_account_no, customer_no)
+        REFERENCES public."MB002003" (account_no, customer_no);
+    END IF;
+END $$;

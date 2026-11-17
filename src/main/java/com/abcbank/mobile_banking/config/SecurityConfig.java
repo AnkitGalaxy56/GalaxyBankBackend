@@ -14,24 +14,69 @@ import com.abcbank.mobile_banking.security.JwtAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
-    @Bean SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter) throws Exception {
-        return http.csrf(csrf -> csrf.disable())
-          .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-          .authorizeHttpRequests(a -> a
-            .requestMatchers("/api/v1/registration/start", "/api/v1/registration/verify-otp", "/actuator/health").permitAll()
-            // LOGIN + FORGOT MPIN (added)
-            .requestMatchers("/api/v1/auth/web/login", 
-             "/api/v1/auth/verify-login-otp",
-            "/api/v1/auth/mpin/login",
-                             "/api/v1/auth/forgot-mpin/request", "/api/v1/auth/forgot-mpin/verify-otp").permitAll()
-            .requestMatchers("/api/v1/auth/forgot-mpin/reset").hasAuthority("SCOPE_mpin:reset")
-            .requestMatchers("/api/v1/registration/complete").hasAuthority("SCOPE_registration:complete")
-            // only a real login token may use banking APIs (registration / reset tokens may not)
-            .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_fund:transfer")
-           // .requestMatchers("/api/v1/transfers/**").hasAuthority("SCOPE_access")
-            .anyRequest().authenticated())
-          .httpBasic(b -> b.disable()).formLogin(f -> f.disable())
-          .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class).build();
+
+    @Bean
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            JwtAuthenticationFilter jwtFilter) throws Exception {
+
+        return http
+                .csrf(csrf -> csrf.disable())
+
+                .sessionManagement(s ->
+                        s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+                .authorizeHttpRequests(a -> a
+
+                        .requestMatchers(
+                                "/api/v1/registration/start",
+                                "/api/v1/registration/verify-otp",
+                                "/actuator/health"
+                        ).permitAll()
+
+                        .requestMatchers(
+                                "/api/v1/auth/web/login",
+                                "/api/v1/auth/mpin/login",
+                                "/api/v1/auth/forgot-mpin/request",
+                                "/api/v1/auth/forgot-mpin/verify-otp"
+                        ).permitAll()
+
+                        .requestMatchers("/api/v1/auth/forgot-mpin/reset")
+                        .hasAuthority("SCOPE_mpin:reset")
+
+                        .requestMatchers("/api/v1/registration/complete")
+                        .hasAuthority("SCOPE_registration:complete")
+
+                        .requestMatchers("/api/v1/transfers/**")
+                        .hasAuthority("SCOPE_fund:transfer")
+
+                        .requestMatchers("/api/v1/requests/stop-payment")
+                        .hasAuthority("SCOPE_fund:transfer")
+
+                        // Corrected customer role
+                        .requestMatchers("/api/v1/deposits/**")
+                        .hasRole("CUSTOMER")
+
+
+                        .requestMatchers("/api/v1/locker/**")
+                       .hasRole("CUSTOMER")
+
+                           .requestMatchers("/api/v1/positive-pay/**")
+.hasRole("CUSTOMER")
+                       
+
+                        .anyRequest().authenticated()
+                )
+
+                .httpBasic(b -> b.disable())
+                .formLogin(f -> f.disable())
+
+                .addFilterBefore(
+                        jwtFilter,
+                        UsernamePasswordAuthenticationFilter.class
+                )
+
+                .build();
     }
 
     @Bean

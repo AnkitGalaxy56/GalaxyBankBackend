@@ -2,6 +2,7 @@
 package com.abcbank.mobile_banking.security;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -48,28 +49,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 if (subject != null && !subject.isBlank()
                         && "CU".equals(userType)) {
 
-                    String authority = null;
+                    List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+
+                    // Normal authenticated customer
+                    authorities.add(new SimpleGrantedAuthority("ROLE_CUSTOMER"));
 
                     if ("registration:complete".equals(scope)) {
-                        authority = "SCOPE_registration:complete";
+                        authorities.add(new SimpleGrantedAuthority(
+                                "SCOPE_registration:complete"));
                     } else if ("mpin:reset".equals(scope)) {
-                        authority = "SCOPE_mpin:reset";
+                        authorities.add(new SimpleGrantedAuthority(
+                                "SCOPE_mpin:reset"));
                     } else if ("fund:transfer".equals(scope)
                             || "access".equals(scope)) {
-                        authority = "SCOPE_fund:transfer";
+                        authorities.add(new SimpleGrantedAuthority(
+                                "SCOPE_fund:transfer"));
                     }
 
-                    if (authority != null) {
-                        var authentication =
-                                new UsernamePasswordAuthenticationToken(
-                                        subject,
-                                        null,
-                                        List.of(new SimpleGrantedAuthority(authority))
-                                );
+                    var authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    subject, null, authorities);
 
-                        SecurityContextHolder.getContext()
-                                .setAuthentication(authentication);
-                    }
+                    SecurityContextHolder.getContext()
+                            .setAuthentication(authentication);
                 }
 
             } catch (JwtException | IllegalArgumentException ex) {
