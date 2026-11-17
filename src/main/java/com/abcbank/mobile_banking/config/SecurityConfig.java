@@ -61,6 +61,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/locker/**")
                        .hasRole("CUSTOMER")
 
+                           .requestMatchers("/api/v1/positive-pay/**")
+.hasRole("CUSTOMER")
+                       
+
                         .anyRequest().authenticated()
                 )
 
