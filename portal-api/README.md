@@ -55,3 +55,11 @@ The API uses `user_role` from `MB001001` for role claims. `ADMIN` can access all
 - OTP challenge state is held in process memory. Use a shared cache/database table before running multiple API instances.
 - The portal API does not modify the original backend's Spring configuration or routes.
 - Do not expose `.env`, JWT secrets, or real passwords in source control.
+
+## Mobile request review + session re-verification
+
+New mobile review endpoints are implemented in `MobileRequestReviewController`; the session credential re-check endpoint is in `SessionVerificationController`. Apply `sql/05_mobile_requests.sql` before enabling the three request screens. The frontend uses these APIs through `src/services/mobile-requests.service.ts`.
+
+Session warning behavior: 3 minutes idle, then a 3-minute warning countdown. The warning dialog blocks Escape/backdrop dismissal. The user must re-enter the currently authenticated Login ID and password and press **I am here**; `/auth/verify-session` checks that Login ID belongs to the current authenticated user and validates the password hash. At zero, the portal logs out.
+
+See `MOBILE_REQUEST_TABLE_FIELDS.md` for the database column list.
