@@ -1,12 +1,9 @@
-
-
 package com.abcbank.mobile_banking.dto.response;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 public record BeneficiaryResponse(
-
         Long id,
         String beneficiaryName,
         String beneficiaryAccount,
@@ -18,6 +15,5 @@ public record BeneficiaryResponse(
         boolean verified,
         boolean active,
         OffsetDateTime createdOn
-
 ) {
 }

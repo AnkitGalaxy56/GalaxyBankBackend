@@ -9,14 +9,18 @@ import org.springframework.web.bind.annotation.RestController;
 import com.abcbank.mobile_banking.dto.request.ForgotMpinRequest;
 import com.abcbank.mobile_banking.dto.request.MpinLoginRequest;
 import com.abcbank.mobile_banking.dto.request.RegistrationCompleteRequest;
+import com.abcbank.mobile_banking.dto.request.RefreshTokenRequest;
 import com.abcbank.mobile_banking.dto.request.VerifyMpinResetOtpRequest;
 import com.abcbank.mobile_banking.dto.request.WebLoginRequest;
 import com.abcbank.mobile_banking.dto.response.AuthResponse;
 import com.abcbank.mobile_banking.dto.response.MessageResponse;
+import com.abcbank.mobile_banking.dto.response.MobileAuthResponse;
+import com.abcbank.mobile_banking.dto.response.RefreshTokenResponse;
 import com.abcbank.mobile_banking.dto.response.RegistrationStartResponse;
 import com.abcbank.mobile_banking.dto.response.RegistrationTokenResponse;
 import com.abcbank.mobile_banking.service.AuthService;
 import com.abcbank.mobile_banking.service.MpinResetService;
+import com.abcbank.mobile_banking.service.RefreshTokenService;
 
 import jakarta.validation.Valid;
 
@@ -26,10 +30,12 @@ public class AuthController {
 
     private final AuthService authService;
     private final MpinResetService mpinResetService;
+    private final RefreshTokenService refreshTokenService;
 
-    public AuthController(AuthService authService, MpinResetService mpinResetService) {
+    public AuthController(AuthService authService, MpinResetService mpinResetService, RefreshTokenService refreshTokenService) {
         this.authService = authService;
         this.mpinResetService = mpinResetService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     /** Web page: username + password. */
@@ -43,8 +49,15 @@ public class AuthController {
 
     /** Mobile app: customerId + 4-digit MPIN. */
     @PostMapping("/mpin/login")
-    public ResponseEntity<AuthResponse> mpinLogin(@Valid @RequestBody MpinLoginRequest request) {
+    public ResponseEntity<MobileAuthResponse> mpinLogin(@Valid @RequestBody MpinLoginRequest request) {
         return ResponseEntity.ok(authService.mpinLogin(request));
+    }
+
+
+    /** Rotates the mobile refresh token and returns a new access/refresh pair. */
+    @PostMapping("/token/refresh")
+    public ResponseEntity<RefreshTokenResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        return ResponseEntity.ok(refreshTokenService.rotate(request.refreshToken(), request.deviceId()));
     }
 
     /** "Forgot MPIN": sends a 4-digit OTP to the registered mobile. */

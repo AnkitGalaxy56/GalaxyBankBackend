@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/web/login",
                                 "/api/v1/auth/mpin/login",
+                                "/api/v1/auth/token/refresh",
                                 "/api/v1/auth/forgot-mpin/request",
                                 "/api/v1/auth/forgot-mpin/verify-otp"
                         ).permitAll()
