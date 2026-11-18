@@ -49,6 +49,16 @@ public class JwtService {
         return Jwts.builder().subject(subject).claim("user_type", userType).claim("scope", "access").claim("channel", channel)
           .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(accessTtlSeconds))).signWith(key).compact();
     }
+    /** Mobile access token bound to a server-side refresh session. */
+    public String createAccessToken(String subject, String userType, String channel, String sessionId) {
+        Instant now = Instant.now();
+        return Jwts.builder().subject(subject).claim("user_type", userType)
+                .claim("scope", "access").claim("channel", channel)
+                .claim("sid", sessionId)
+                .issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(accessTtlSeconds)))
+                .signWith(key).compact();
+    }
+
     /** Forgot-MPIN token, valid only for the "set new MPIN" call. scope=mpin:reset */
     public String createMpinResetToken(String customerId, long ttl) {
         Instant now=Instant.now();

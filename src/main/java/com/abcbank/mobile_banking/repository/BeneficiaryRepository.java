@@ -8,16 +8,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.abcbank.mobile_banking.dto.response.BeneficiaryResponse;
+
+
 
 @Repository
 public class BeneficiaryRepository {
 
     private final JdbcTemplate jdbc;
+
+    private static final int MAX_OTP_ATTEMPTS = 3;
 
     public BeneficiaryRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
@@ -45,7 +51,7 @@ public class BeneficiaryRepository {
         return rows.get(0);
     }
 
-    // Map actual database columns to existing response fields
+    // Map database columns to response
     private final RowMapper<BeneficiaryResponse> beneficiaryRowMapper =
             (ResultSet rs, int rowNum) -> new BeneficiaryResponse(
                     rs.getLong("id"),
@@ -61,7 +67,7 @@ public class BeneficiaryRepository {
                     rs.getObject("created_on", OffsetDateTime.class)
             );
 
-    // Save beneficiary
+    // Save beneficiary with PENDING status
     public Long saveBeneficiary(
             String branchCode,
             String customerNo,
@@ -107,7 +113,7 @@ public class BeneficiaryRepository {
             createdBy);
     }
 
-    // Common SELECT with aliases matching BeneficiaryResponse
+    // Common beneficiary SELECT
     private static final String BENEFICIARY_SELECT = """
         SELECT
             id,
@@ -141,8 +147,28 @@ public class BeneficiaryRepository {
         return results.stream().findFirst();
     }
 
+    // Check pending beneficiary
+    public boolean isPendingBeneficiary(
+            Long beneficiaryId,
+            String customerNo) {
+
+        Integer count = jdbc.queryForObject("""
+            SELECT COUNT(*)
+            FROM public."MB004011"
+            WHERE id = ?
+              AND customer_no = ?
+              AND req_status = 'PENDING'
+            """,
+            Integer.class,
+            beneficiaryId,
+            customerNo);
+
+        return count != null && count > 0;
+    }
+
     // List customer beneficiaries
-    public List<BeneficiaryResponse> findAllByCustomer(String customerNo) {
+    public List<BeneficiaryResponse> findAllByCustomer(
+            String customerNo) {
 
         return jdbc.query(
                 BENEFICIARY_SELECT + """
@@ -184,7 +210,12 @@ public class BeneficiaryRepository {
             String customerNo) {
 
         List<OtpRecord> results = jdbc.query("""
-            SELECT id, otp_hash, expires_at, attempts, is_verified
+            SELECT
+                id,
+                otp_hash,
+                expires_at,
+                attempts,
+                is_verified
             FROM public."MB004012"
             WHERE beneficiary_id = ?
               AND customer_no = ?
@@ -196,6 +227,7 @@ public class BeneficiaryRepository {
                     rs.getString("otp_hash"),
                     rs.getObject("expires_at", OffsetDateTime.class),
                     rs.getInt("attempts"),
+                    MAX_OTP_ATTEMPTS,
                     rs.getBoolean("is_verified")
             ),
             beneficiaryId,
@@ -211,10 +243,11 @@ public class BeneficiaryRepository {
             UPDATE public."MB004012"
             SET attempts = attempts + 1
             WHERE id = ?
-              AND attempts < 5
+              AND attempts < ?
               AND is_verified = FALSE
             """,
-            otpId);
+            otpId,
+            MAX_OTP_ATTEMPTS);
     }
 
     // Mark OTP verified
@@ -229,12 +262,12 @@ public class BeneficiaryRepository {
             otpId);
     }
 
-    // Approve beneficiary after OTP verification
+    // Approve beneficiary only after successful OTP verification
     public void activateBeneficiary(
             Long beneficiaryId,
             String customerNo) {
 
-        jdbc.update("""
+        int updated = jdbc.update("""
             UPDATE public."MB004011"
             SET req_status = 'APPROVED'
             WHERE id = ?
@@ -243,6 +276,12 @@ public class BeneficiaryRepository {
             """,
             beneficiaryId,
             customerNo);
+
+        if (updated != 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Beneficiary approval failed. Check beneficiary status.");
+        }
     }
 
     // Deactivate beneficiary
@@ -262,11 +301,38 @@ public class BeneficiaryRepository {
             customerNo);
     }
 
+    // OTP record
     public record OtpRecord(
             Long id,
             String otpHash,
             OffsetDateTime expiresAt,
             int attempts,
+            int maxAttempts,
             boolean verified) {
     }
+
+
+    public int updateBeneficiaryDetails(
+            Long beneficiaryId,
+            String customerNo,
+            String beneficiaryName,
+            BigDecimal singleTransactionLimit) {
+
+        return jdbc.update("""
+                UPDATE public."MB004011"
+                SET beneficiary_name = ?,
+                    transaction_limit = ?,
+                    modified_on = NOW()
+                WHERE id = ?
+                  AND customer_no = ?
+                  AND req_status = 'APPROVED'
+                """,
+                beneficiaryName,
+                singleTransactionLimit,
+                beneficiaryId,
+                customerNo);
+    }
+
+    
+
 }

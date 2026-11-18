@@ -15,6 +15,11 @@ import com.abcbank.mobile_banking.dto.response.FundTransferResponse;
 import com.abcbank.mobile_banking.entity.FundTransferRequestEntity;
 import com.abcbank.mobile_banking.repository.FundTransferRequestRepository;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.abcbank.mobile_banking.dto.response.TransferStatusResponse;
+
 @Service
 public class FundTransferService {
 
@@ -177,5 +182,44 @@ public class FundTransferService {
                 "Transfer request submitted successfully. "
                 + "Awaiting bank processing."
         );
+    }public TransferStatusResponse getTransferStatus(
+        String customerId,
+        Long requestId) {
+
+    if (customerId == null || customerId.isBlank()) {
+        throw new ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Invalid customer authentication."
+        );
     }
+
+    FundTransferRequestEntity transfer = repository
+            .findByIdAndCustomerNo(requestId, customerId)
+            .orElseThrow(() -> new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Transfer request not found."
+            ));
+
+    String databaseStatus = transfer.getReqStatus();
+
+    String apiStatus = switch (databaseStatus.toUpperCase()) {
+        case "PENDING" -> "SUBMITTED";
+        case "APPROVED" -> "PROCESSING";
+        case "COMPLETED" -> "SUCCESS";
+        case "FAILED", "REJECTED" -> "FAILED";
+        case "CANCELLED" -> "REVERSED";
+        default -> databaseStatus;
+    };
+
+    return new TransferStatusResponse(
+            transfer.getId(),
+            apiStatus,
+            transfer.getAmount(),
+            transfer.getPayMode(),
+            null,
+            transfer.getCreatedOn()
+    );
+}
+
+    
 }
