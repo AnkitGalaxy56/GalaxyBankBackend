@@ -1,5 +1,7 @@
 package com.abcbank.mobile_banking.controller;
 
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -39,6 +41,20 @@ public class FundTransferController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(response);
     }
+    // POST: Confirm transfer request
+@PostMapping("/{requestId}/confirm")
+public ResponseEntity<Map<String, Object>> confirmTransfer(
+        @PathVariable Long requestId,
+        Authentication authentication) {
+
+    Map<String, Object> response =
+            service.confirmTransfer(
+                    authentication.getName(),
+                    requestId
+            );
+
+    return ResponseEntity.ok(response);
+}
 
     // GET: Check transfer status
     @GetMapping("/{requestId}")
