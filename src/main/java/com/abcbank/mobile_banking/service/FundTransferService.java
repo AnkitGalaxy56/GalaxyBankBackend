@@ -6,19 +6,17 @@ import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.abcbank.mobile_banking.dto.request.FundTransferRequest;
 import com.abcbank.mobile_banking.dto.response.FundTransferResponse;
+import com.abcbank.mobile_banking.dto.response.TransferStatusResponse;
 import com.abcbank.mobile_banking.entity.FundTransferRequestEntity;
 import com.abcbank.mobile_banking.repository.FundTransferRequestRepository;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
-
-import com.abcbank.mobile_banking.dto.response.TransferStatusResponse;
 
 @Service
 public class FundTransferService {
@@ -43,7 +41,6 @@ public class FundTransferService {
                     "Invalid customer authentication.");
         }
 
-        // 1. Confirm beneficiary account numbers
         String beneficiaryAccount = request.accountNo().trim();
         String confirmAccount = request.reConfirmAccountNo().trim();
 
@@ -52,24 +49,20 @@ public class FundTransferService {
                     "Beneficiary account numbers do not match.");
         }
 
-        // 2. Normalize payment mode and IFSC
         String mode = request.paymentMode().trim()
                 .toUpperCase(Locale.ROOT);
 
         String ifsc = request.ifscCode().trim()
                 .toUpperCase(Locale.ROOT);
 
-        // 3. RTGS minimum amount validation
         if ("RTGS".equals(mode)
                 && request.amount().compareTo(
                         new BigDecimal("200000.00")) < 0) {
-
             throw new IllegalArgumentException(
                     "RTGS minimum amount is Rs. 2,00,000. "
                     + "Please select NEFT or IMPS.");
         }
 
-        // 4. Validate logged-in customer
         Long createdBy;
 
         try {
@@ -86,7 +79,6 @@ public class FundTransferService {
                     "Active customer user record not found.");
         }
 
-        // 5. Validate debit account ownership and status
         Map<String, Object> debit;
 
         try {
@@ -117,7 +109,6 @@ public class FundTransferService {
                     "Debit account is not active.");
         }
 
-        // 6. Validate beneficiary IFSC and get bank name
         Map<String, Object> beneficiary;
 
         try {
@@ -142,7 +133,6 @@ public class FundTransferService {
         String bankName =
                 String.valueOf(beneficiary.get("bank_name"));
 
-        // 7. Create mobile banking transfer request
         FundTransferRequestEntity entity =
                 new FundTransferRequestEntity(
                         String.valueOf(debit.get("branch_code")),
@@ -160,18 +150,14 @@ public class FundTransferService {
                         createdBy
                 );
 
-        // Mobile App = true in PostgreSQL BOOLEAN column
         entity.setIsSys(true);
 
         FundTransferRequestEntity saved =
                 repository.save(entity);
 
-        // Convert Boolean back to existing API response code
         Integer requestSource = Boolean.TRUE.equals(saved.getIsSys())
-                ? 1
-                : 2;
+                ? 1 : 2;
 
-        // 8. Return response
         return new FundTransferResponse(
                 saved.getId(),
                 saved.getReqStatus(),
@@ -182,44 +168,135 @@ public class FundTransferService {
                 "Transfer request submitted successfully. "
                 + "Awaiting bank processing."
         );
-    }public TransferStatusResponse getTransferStatus(
-        String customerId,
-        Long requestId) {
-
-    if (customerId == null || customerId.isBlank()) {
-        throw new ResponseStatusException(
-                HttpStatus.UNAUTHORIZED,
-                "Invalid customer authentication."
-        );
     }
 
-    FundTransferRequestEntity transfer = repository
-            .findByIdAndCustomerNo(requestId, customerId)
-            .orElseThrow(() -> new ResponseStatusException(
+    // GET: Check transfer status
+    public TransferStatusResponse getTransferStatus(
+            String customerId,
+            Long requestId) {
+
+        if (customerId == null || customerId.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Invalid customer authentication.");
+        }
+
+        FundTransferRequestEntity transfer = repository
+                .findByIdAndCustomerNo(requestId, customerId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Transfer request not found."));
+
+        String databaseStatus = transfer.getReqStatus();
+
+        String apiStatus = switch (databaseStatus.toUpperCase()) {
+            case "PENDING" -> "SUBMITTED";
+            case "APPROVED" -> "PROCESSING";
+            case "COMPLETED" -> "SUCCESS";
+            case "FAILED", "REJECTED" -> "FAILED";
+            case "CANCELLED" -> "REVERSED";
+            default -> databaseStatus;
+        };
+
+        return new TransferStatusResponse(
+                transfer.getId(),
+                apiStatus,
+                transfer.getAmount(),
+                transfer.getPayMode(),
+                null,
+                transfer.getCreatedOn());
+    }
+
+    // POST: Customer confirms a submitted transfer request
+    @Transactional
+    public Map<String, Object> confirmTransfer(
+            String customerId,
+            Long requestId) {
+
+        if (customerId == null || customerId.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Invalid customer authentication.");
+        }
+
+        // Find the request belonging to this customer
+        Map<String, Object> transfer;
+
+        try {
+            transfer = jdbc.queryForMap("""
+                SELECT
+                    id,
+                    req_status,
+                    customer_confirmed_on
+                FROM public."MB004001"
+                WHERE id = ?
+                  AND customer_no = ?
+                FOR UPDATE
+                """, requestId, customerId);
+
+        } catch (EmptyResultDataAccessException ex) {
+            throw new ResponseStatusException(
                     HttpStatus.NOT_FOUND,
-                    "Transfer request not found."
-            ));
+                    "Transfer request not found.");
+        }
 
-    String databaseStatus = transfer.getReqStatus();
+        String status =
+                String.valueOf(transfer.get("req_status"));
 
-    String apiStatus = switch (databaseStatus.toUpperCase()) {
-        case "PENDING" -> "SUBMITTED";
-        case "APPROVED" -> "PROCESSING";
-        case "COMPLETED" -> "SUCCESS";
-        case "FAILED", "REJECTED" -> "FAILED";
-        case "CANCELLED" -> "REVERSED";
-        default -> databaseStatus;
-    };
+        if (!"PENDING".equalsIgnoreCase(status)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Only pending transfer requests can be confirmed.");
+        }
 
-    return new TransferStatusResponse(
-            transfer.getId(),
-            apiStatus,
-            transfer.getAmount(),
-            transfer.getPayMode(),
-            null,
-            transfer.getCreatedOn()
-    );
-}
+        if (transfer.get("customer_confirmed_on") != null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Transfer request has already been confirmed.");
+        }
 
-    
+        // Get the logged-in customer's internal user ID
+        Long confirmedBy;
+
+        try {
+            confirmedBy = jdbc.queryForObject("""
+                SELECT user_id
+                FROM public."MB001001"
+                WHERE customer_no = ?
+                  AND user_type = 'CU'
+                  AND status = 'ACTIVE'
+                """, Long.class, customerId);
+
+        } catch (EmptyResultDataAccessException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Active customer user record not found.");
+        }
+
+        // Record confirmation. Do not change req_status.
+        int updated = jdbc.update("""
+            UPDATE public."MB004001"
+            SET customer_confirmed_by = ?,
+                customer_confirmed_on = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND customer_no = ?
+              AND req_status = 'PENDING'
+              AND customer_confirmed_on IS NULL
+            """, confirmedBy, requestId, customerId);
+
+        if (updated != 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Transfer request could not be confirmed. "
+                    + "Please refresh and try again.");
+        }
+
+        return Map.of(
+                "success", true,
+                "message", "Transfer request confirmed successfully.",
+                "requestId", requestId,
+                "status", "PENDING",
+                "confirmed", true
+        );
+    }
 }

@@ -61,3 +61,7 @@ CHECK (
         'CANCELLED'
     )
 );
+
+ALTER TABLE public."MB004001"
+ADD COLUMN IF NOT EXISTS customer_confirmed_by BIGINT,
+ADD COLUMN IF NOT EXISTS customer_confirmed_on TIMESTAMPTZ;
