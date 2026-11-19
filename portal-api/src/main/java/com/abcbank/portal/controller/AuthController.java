@@ -1,6 +1,7 @@
 package com.abcbank.portal.controller;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpServletRequest;
 
 import com.abcbank.portal.security.JwtService;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,7 +34,8 @@ public class AuthController {
  private final Map<Long,PasswordChange> passwordChanges=new ConcurrentHashMap<>();
  public AuthController(JdbcTemplate db,PasswordEncoder passwords,JwtService jwt){this.db=db;this.passwords=passwords;this.jwt=jwt;}
  @PostConstruct void initRefreshTokens(){
-  db.execute("create table if not exists public.portal_auth_refresh_tokens (id bigserial primary key, user_id bigint not null, token_hash varchar(64) not null unique, expires_at timestamptz not null, created_at timestamptz not null default now(), revoked_at timestamptz)");
+  db.execute("create table if not exists public.portal_auth_refresh_tokens (id bigserial primary key, user_id bigint not null, token_hash varchar(64) not null unique, expires_at timestamptz not null, created_at timestamptz not null default now(), revoked_at timestamptz, revoked_reason varchar(40))");
+  db.execute("alter table public.portal_auth_refresh_tokens add column if not exists revoked_reason varchar(40)");
   db.execute("create index if not exists idx_portal_auth_refresh_user on public.portal_auth_refresh_tokens(user_id)");
  }
  @PostMapping("/login") public Map<String,Object> login(@RequestBody Map<String,String> body){
@@ -53,7 +55,10 @@ public class AuthController {
   pending.put(challenge,new Pending(uid,username,role,branch,name,Objects.toString(u.get("email"),""),Objects.toString(u.get("mobile"),""),u.get("idle_timeout")==null?null:((Number)u.get("idle_timeout")).intValue(),Instant.now().plusSeconds(otpTtl*60)));
   return Map.of("otpRequired",true,"challengeId",challenge,"message","OTP sent");
  }
- @PostMapping("/verify-otp") public Map<String,Object> verify(@RequestBody Map<String,String> body){String id=body.get("challengeId"); Pending p=pending.remove(id); if(p==null||p.expires().isBefore(Instant.now())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"OTP challenge expired. Login again"); if(!Objects.equals(otpValue,body.get("otp"))) {pending.put(id,p);throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid OTP");}
+ @PostMapping("/verify-otp") @Transactional public Map<String,Object> verify(@RequestBody Map<String,String> body){String id=body.get("challengeId"); Pending p=pending.remove(id); if(p==null||p.expires().isBefore(Instant.now())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"OTP challenge expired. Login again"); if(!Objects.equals(otpValue,body.get("otp"))) {pending.put(id,p);throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid OTP");}
+  // A user may have only one active device session. Revoke all previous
+  // refresh sessions before issuing the new device's tokens.
+  db.update("update public.portal_auth_refresh_tokens set revoked_at=now(), revoked_reason='NEW_LOGIN' where user_id=? and revoked_at is null",p.userId());
   String token=jwt.create(p.userId(),p.username(),p.role(),p.branch());
   String refreshToken=newRefreshToken();
   db.update("insert into public.portal_auth_refresh_tokens(user_id,token_hash,expires_at) values(?,?,?)",p.userId(),hashRefreshToken(refreshToken),Timestamp.from(Instant.now().plusSeconds(Math.max(1,refreshTtlHours)*3600)));
@@ -65,9 +70,16 @@ public class AuthController {
   String supplied=Objects.toString(body.get("refreshToken"),"").trim();
   if(supplied.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Refresh token is required.");
   String oldHash=hashRefreshToken(supplied);
-  List<Long> ids=db.query("select user_id from public.portal_auth_refresh_tokens where token_hash=? and revoked_at is null and expires_at>now() for update",(rs,n)->rs.getLong(1),oldHash);
-  if(ids.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Refresh session expired. Please sign in again.");
-  long uid=ids.get(0);
+  List<Map<String,Object>> sessions=db.queryForList("select user_id, revoked_reason, revoked_at, (expires_at <= now()) as expired from public.portal_auth_refresh_tokens where token_hash=? for update",oldHash);
+  if(sessions.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Refresh session expired. Please sign in again.");
+  Map<String,Object> session=sessions.get(0);
+  if(session.get("revoked_at")!=null && "NEW_LOGIN".equalsIgnoreCase(Objects.toString(session.get("revoked_reason"),""))) {
+   throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"You have logged in on another device. This session will be logged out.");
+  }
+  if(session.get("revoked_at")!=null || Boolean.TRUE.equals(session.get("expired"))) {
+   throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Refresh session expired. Please sign in again.");
+  }
+  long uid=((Number)session.get("user_id")).longValue();
   Map<String,Object> u;
   try { u=db.queryForMap("select user_name,user_type,branch,status from public.\"MB001001\" where user_id=?",uid); }
   catch(Exception e){ throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"User session is no longer available."); }
@@ -77,13 +89,22 @@ public class AuthController {
   String branch=Objects.toString(u.get("branch"),"");
   String accessToken=jwt.create(uid,username,role,branch);
   String nextRefreshToken=newRefreshToken();
-  int revoked=db.update("update public.portal_auth_refresh_tokens set revoked_at=now() where token_hash=? and revoked_at is null",oldHash);
+  int revoked=db.update("update public.portal_auth_refresh_tokens set revoked_at=now(), revoked_reason='ROTATED' where token_hash=? and revoked_at is null",oldHash);
   if(revoked!=1) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Refresh session was already used.");
   db.update("insert into public.portal_auth_refresh_tokens(user_id,token_hash,expires_at) values(?,?,?)",uid,hashRefreshToken(nextRefreshToken),Timestamp.from(Instant.now().plusSeconds(Math.max(1,refreshTtlHours)*3600)));
   db.update("update public.\"MB001001\" set token=? where user_id=?",accessToken,uid);
   return Map.of("accessToken",accessToken,"refreshToken",nextRefreshToken);
  }
- @PostMapping("/logout") public Map<String,String> logout(org.springframework.security.core.Authentication auth){if(auth!=null){long uid=Long.parseLong(auth.getName());db.update("update public.\"MB001001\" set token=null,logout_time=now() where user_id=?",uid);db.update("update public.portal_auth_refresh_tokens set revoked_at=now() where user_id=? and revoked_at is null",uid);}return Map.of("message","Logged out");}
+ @PostMapping("/logout") public Map<String,String> logout(org.springframework.security.core.Authentication auth, HttpServletRequest request){
+  if(auth!=null){
+   long uid=Long.parseLong(auth.getName());
+   String header=request.getHeader("Authorization");
+   String accessToken=header!=null && header.startsWith("Bearer ")?header.substring(7).trim():"";
+   int cleared=db.update("update public.\"MB001001\" set token=null,logout_time=now() where user_id=? and token=?",uid,accessToken);
+   if(cleared==1) db.update("update public.portal_auth_refresh_tokens set revoked_at=now(), revoked_reason='LOGOUT' where user_id=? and revoked_at is null",uid);
+  }
+  return Map.of("message","Logged out");
+ }
  @GetMapping("/profile") public Map<String,Object> profile(org.springframework.security.core.Authentication auth){
   Map<String,Object> r=db.queryForMap("select user_id,user_name,full_name,first_name,middle_name,last_name,emp_no,designation,dob,user_role,user_type,branch,email,mobile,status,multi_branch,idle_timeout,login_time,logout_time from public.\"MB001001\" where user_id=?",Long.parseLong(auth.getName()));
   Map<String,Object> out=new LinkedHashMap<>();

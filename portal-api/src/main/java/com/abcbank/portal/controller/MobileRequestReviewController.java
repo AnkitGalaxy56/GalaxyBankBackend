@@ -56,7 +56,7 @@ public class MobileRequestReviewController {
     // GET /mobile-requests/{module}
     // =========================================================
 
-    @GetMapping("/{module}")
+    @GetMapping({"/{module}", "/{module}/"})
     public List<Map<String, Object>> list(
         @PathVariable String module,
         Authentication authentication
@@ -424,7 +424,7 @@ public class MobileRequestReviewController {
                 "modified_on = now() " +
 
                 "where p.id = ? " +
-                "and p.kyc_status in ('PENDING', 'IN_PROGRESS') " +
+                "and upper(trim(coalesce(p.kyc_status, ''))) not in ('APPROVED', 'REJECTED', 'COMPLETED') " +
 
                 scope;
 
@@ -455,10 +455,16 @@ public class MobileRequestReviewController {
                 ? "MB004014"
                 : "MB004013";
 
+            // Only a rejection writes the rejection reason. Verification should
+            // not touch this optional field, avoiding unnecessary DB constraints.
             String rejectColumn =
-                module.equals("positive-pay")
+                module.equals("positive-pay") && status.equals("REJECTED")
                     ? ", reject_reason = ?"
                     : "";
+
+            String pendingStatuses =
+                " and upper(trim(coalesce(req_status, ''))) " +
+                "in ('PENDING', 'PENDING_REVIEW', 'PENDING REVIEW', 'IN_PROGRESS', 'SUBMITTED')";
 
             List<Object> args = new ArrayList<>();
 
@@ -466,7 +472,7 @@ public class MobileRequestReviewController {
             args.add(actor.id);
             args.add(actor.id);
 
-            if (module.equals("positive-pay")) {
+            if (!rejectColumn.isEmpty()) {
                 args.add(reason);
             }
 
@@ -489,7 +495,7 @@ public class MobileRequestReviewController {
                 rejectColumn +
 
                 "where id = ? " +
-                "and req_status = 'PENDING' " +
+                pendingStatuses +
                 "and created_by <> ? " +
 
                 branchScope;
