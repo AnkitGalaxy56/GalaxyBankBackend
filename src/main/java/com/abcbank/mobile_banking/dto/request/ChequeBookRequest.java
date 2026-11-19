@@ -7,7 +7,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-
 public record ChequeBookRequest(
 
     @NotBlank
@@ -25,5 +24,5 @@ public record ChequeBookRequest(
         message = "Delivery must be HOME or BRANCH"
     )
     String delivery
-
+    
 ) {}
