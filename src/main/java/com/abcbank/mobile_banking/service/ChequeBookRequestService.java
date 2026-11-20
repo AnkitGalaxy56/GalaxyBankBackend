@@ -1,4 +1,3 @@
-
 package com.abcbank.mobile_banking.service;
 
 import java.time.OffsetDateTime;
@@ -29,7 +28,15 @@ public class ChequeBookRequestService {
 
         if (customerId == null || customerId.isBlank()) {
             throw new IllegalArgumentException(
-                "Invalid customer authentication."
+                    "Invalid customer authentication."
+            );
+        }
+
+        // Leaves must be 25 or 50
+        if (request.noofLeaves() == null
+                || (request.noofLeaves() != 25 && request.noofLeaves() != 50)) {
+            throw new IllegalArgumentException(
+                    "Number of leaves must be 25 or 50."
             );
         }
 
@@ -44,13 +51,13 @@ public class ChequeBookRequestService {
                   AND user_type = 'CU'
                   AND status = 'ACTIVE'
                 """,
-                Long.class,
-                customerId
+                    Long.class,
+                    customerId
             );
 
         } catch (EmptyResultDataAccessException ex) {
             throw new IllegalArgumentException(
-                "Active customer user record not found."
+                    "Active customer user record not found."
             );
         }
 
@@ -69,30 +76,30 @@ public class ChequeBookRequestService {
                 WHERE account_no = ?
                   AND customer_no = ?
                 """,
-                request.accountNo().trim(),
-                customerId
+                    request.accountNo().trim(),
+                    customerId
             );
 
         } catch (EmptyResultDataAccessException ex) {
             throw new IllegalArgumentException(
-                "Account not found or does not belong to you."
+                    "Account not found or does not belong to you."
             );
         }
 
         // 3. Check account status
         String accountStatus =
-            String.valueOf(account.get("account_status"));
+                String.valueOf(account.get("account_status"));
 
         if (!"ACTIVE".equalsIgnoreCase(accountStatus)) {
             throw new IllegalArgumentException(
-                "Account is not active."
+                    "Account is not active."
             );
         }
 
         // 4. Normalize delivery option
         String delivery = request.delivery()
-            .trim()
-            .toUpperCase(Locale.ROOT);
+                .trim()
+                .toUpperCase(Locale.ROOT);
 
         // 5. Insert cheque book request
         return jdbc.queryForObject("""
@@ -102,7 +109,7 @@ public class ChequeBookRequestService {
                 account_no,
                 account_status,
                 account_type,
-                noof_books,
+                noof_leaves,
                 delivery,
                 created_by
             )
@@ -111,30 +118,27 @@ public class ChequeBookRequestService {
                 id,
                 req_status,
                 account_no,
-                noof_books,
+                noof_leaves,
                 delivery,
                 created_on
             """,
-            (rs, rowNum) -> new ChequeBookResponse(
-                rs.getLong("id"),
-                rs.getString("req_status"),
-                rs.getString("account_no"),
-                rs.getInt("noof_books"),
-                rs.getString("delivery"),
-                rs.getObject(
-                    "created_on",
-                    OffsetDateTime.class
+                (rs, rowNum) -> new ChequeBookResponse(
+                        rs.getLong("id"),
+                        rs.getString("req_status"),
+                        rs.getString("account_no"),
+                        rs.getInt("noof_leaves"),
+                        rs.getString("delivery"),
+                        rs.getObject("created_on", OffsetDateTime.class),
+                        "Cheque book request submitted successfully."
                 ),
-                "Cheque book request submitted successfully."
-            ),
-            account.get("branch_code"),
-            customerId,
-            account.get("account_no"),
-            account.get("account_status"),
-            account.get("account_type"),
-            request.noofBooks(),
-            delivery,
-            createdBy
+                account.get("branch_code"),
+                customerId,
+                account.get("account_no"),
+                account.get("account_status"),
+                account.get("account_type"),
+                request.noofLeaves(),
+                delivery,
+                createdBy
         );
     }
 }

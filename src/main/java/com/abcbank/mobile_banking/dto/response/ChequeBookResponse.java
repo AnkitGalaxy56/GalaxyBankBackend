@@ -8,7 +8,7 @@ public record ChequeBookResponse(
     Long id,
     String reqStatus,
     String accountNo,
-    Integer noofBooks,
+    Integer noofLeaves,
     String delivery,
     OffsetDateTime createdOn,
     String message

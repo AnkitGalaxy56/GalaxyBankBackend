@@ -110,7 +110,7 @@ public final class RequestModules {
                 List.of("customerName", "customer", "name"),
                 List.of(
                         str("account_no", "accountNumber", "account", "accountNo").req().id().mask().re(ACCOUNT, "Enter a valid account number."),
-                        integer("noof_books", "noofBooks", "numberOfBooks").min("1").dflt("1"),
+                        integer("noof_leaves", "noofLeaves", "numberOfLeaves").min("25").dflt("25"),
                         str("delivery", "deliveryMethod", "delivery").req().max(20).dflt("Collect from branch"),
                         str("cheque_book_type", "chequeBookType").max(20),
                         str("delivery_address", "deliveryAddress").max(255),

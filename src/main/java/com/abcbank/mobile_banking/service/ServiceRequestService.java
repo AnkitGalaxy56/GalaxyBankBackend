@@ -54,7 +54,7 @@ public class ServiceRequestService {
             'CHEQUE_BOOK-' || id,
             customer_no,
             req_status,
-            CONCAT('Cheque book - ', noof_books, ' book(s)'),
+           CONCAT('Cheque book - ', COALESCE(noof_leaves::text, '25'), ' leaves'),
             NULL::numeric,
             created_on
         FROM public."MB004002"
