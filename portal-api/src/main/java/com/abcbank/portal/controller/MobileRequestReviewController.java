@@ -20,7 +20,7 @@ public class MobileRequestReviewController {
         this.db = db;
     }
 
-    private record Actor(long id, String branch, boolean admin) {}
+    private record Actor(long id, String branch, boolean admin, String systemRole) { boolean checker(){ return admin || systemRole.equalsIgnoreCase("Checker"); } }
 
     private Actor actor(Authentication authentication) {
 
@@ -31,7 +31,7 @@ public class MobileRequestReviewController {
         long id = Long.parseLong(authentication.getName());
 
         Map<String, Object> user = db.queryForMap(
-            "select user_type, branch " +
+            "select user_type, user_role, sys_role, branch " +
             "from public.\"MB001001\" " +
             "where user_id = ?",
             id
@@ -43,7 +43,8 @@ public class MobileRequestReviewController {
             id,
             Objects.toString(user.get("branch"), ""),
             userType.equalsIgnoreCase("ADMIN")
-                || userType.equalsIgnoreCase("SUPER_ADMIN")
+                || userType.equalsIgnoreCase("SUPER_ADMIN"),
+            Objects.toString(user.get("sys_role"), "Maker")
         );
     }
 
@@ -377,6 +378,7 @@ public class MobileRequestReviewController {
     ) {
 
         Actor actor = actor(authentication);
+        if (!actor.checker()) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Checker role is required to verify or reject requests.");
 
         String branchScope = actor.admin
             ? ""

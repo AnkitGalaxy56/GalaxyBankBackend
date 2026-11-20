@@ -186,7 +186,9 @@ public class DashboardController {
         }
 
         // One query gives both the branch list and the user count.
-        List<String> branches = usersByBranch.keySet().stream().filter(b -> !b.isBlank()).toList();
+        List<String> branches = effectiveBranch == null
+                ? usersByBranch.keySet().stream().filter(b -> !b.isBlank()).toList()
+                : (usersByBranch.containsKey(effectiveBranch) ? List.of(effectiveBranch) : List.of());
         long users = effectiveBranch == null
                 ? usersByBranch.values().stream().mapToLong(Long::longValue).sum()
                 : usersByBranch.getOrDefault(effectiveBranch, 0L);

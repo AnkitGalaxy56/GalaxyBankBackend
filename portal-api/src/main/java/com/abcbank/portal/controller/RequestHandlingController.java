@@ -85,6 +85,31 @@ public class RequestHandlingController {
         }
     }
 
+    @GetMapping("/counts")
+    public Map<String, Object> counts(Authentication auth) {
+        Who who = who(auth);
+        long total = 0, pending = 0;
+        Map<String, Map<String, Long>> modules = new LinkedHashMap<>();
+        for (Module m : RequestModules.all()) {
+            try {
+                Set<String> cols = columns(m);
+                if (!cols.contains("req_status") || !cols.contains("branch_code")) continue;
+                String scope = who.admin() ? "" : " where branch_code = ?";
+                Object[] args = who.admin() ? new Object[0] : new Object[]{who.branch()};
+                long all = Objects.requireNonNullElse(db.queryForObject("select count(*) from " + m.qualified() + scope, Long.class, args), 0L);
+                String pendingScope = who.admin() ? "" : " and branch_code = ?";
+                String pendingSql = "select count(*) from " + m.qualified() + " where req_status = 'PENDING'" + pendingScope;
+                Object[] pendingArgs = who.admin() ? new Object[0] : new Object[]{who.branch()};
+                long p = Objects.requireNonNullElse(db.queryForObject(pendingSql, Long.class, pendingArgs), 0L);
+                total += all; pending += p;
+                modules.put(m.key(), Map.of("total", all, "pending", p));
+            } catch (ApiException unavailableModule) {
+                log.debug("Skipping unavailable request module {} in counts endpoint", m.key());
+            }
+        }
+        return Map.of("total", total, "pending", pending, "modules", modules);
+    }
+
     // ------------------------------------------------------------------ list / get
 
     @GetMapping("/{module}")
@@ -169,6 +194,7 @@ public class RequestHandlingController {
                                                       Authentication auth, HttpServletRequest http) {
         Who who = who(auth);
         throttle(who);
+        if (!who.maker()) throw new ApiException(HttpStatus.FORBIDDEN, "Maker role is required to create or update requests.");
         Module m = module(module);
         Set<String> cols = columns(m);
         requireObject(body);
@@ -207,6 +233,7 @@ public class RequestHandlingController {
                                       Authentication auth, HttpServletRequest http) {
         Who who = who(auth);
         throttle(who);
+        if (!who.maker()) throw new ApiException(HttpStatus.FORBIDDEN, "Maker role is required to update requests.");
         Module m = module(module);
         Set<String> cols = columns(m);
         requireObject(body);
@@ -256,7 +283,7 @@ public class RequestHandlingController {
                                       Authentication auth, HttpServletRequest http) {
         Who who = who(auth);
         throttle(who);
-        if (!who.admin() && !staffCanAuthorise) throw new ApiException(HttpStatus.FORBIDDEN, "You are not allowed to authorise requests.");
+        if (!who.checker()) throw new ApiException(HttpStatus.FORBIDDEN, "Checker role is required to authorise or reject requests.");
         Module m = module(module);
         Set<String> cols = columns(m);
         requireObject(body);
@@ -323,8 +350,10 @@ public class RequestHandlingController {
 
     // ------------------------------------------------------------------ caller
 
-    private record Who(long id, String name, String role, String branch) {
+    private record Who(long id, String name, String role, String branch, String userRole, String systemRole) {
         boolean admin() { return role.equals("ADMIN") || role.equals("SUPER_ADMIN"); }
+        boolean maker() { return admin() || systemRole.equalsIgnoreCase("Maker"); }
+        boolean checker() { return admin() || systemRole.equalsIgnoreCase("Checker"); }
     }
 
     private Who who(Authentication auth) {
@@ -337,7 +366,7 @@ public class RequestHandlingController {
         String role = Objects.toString(claims.get("role"), "").toUpperCase(Locale.ROOT);
         if (!PORTAL_ROLES.contains(role)) throw new ApiException(HttpStatus.FORBIDDEN, "Your role cannot access request handling.");
         String branch = Objects.toString(claims.get("branch"), "").trim();
-        Who w = new Who(id, Objects.toString(claims.get("username"), ""), role, branch);
+        Who w = new Who(id, Objects.toString(claims.get("username"), ""), role, branch, Objects.toString(claims.get("userRole"), "Bank User"), Objects.toString(claims.get("sysRole"), "Maker"));
         if (!w.admin() && branch.isEmpty()) throw new ApiException(HttpStatus.FORBIDDEN, "Your user has no branch assigned.");
         return w;
     }

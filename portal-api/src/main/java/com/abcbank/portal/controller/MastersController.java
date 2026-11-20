@@ -97,11 +97,12 @@ public class MastersController {
     public Map<String, Object> listBanks(@RequestParam(defaultValue = "1") int page,
                                          @RequestParam(defaultValue = "50") int pageSize,
                                          @RequestParam(required = false) String search, Authentication auth) {
-        who(auth);
+        Who caller = who(auth);
         Set<String> cols = columns("MB002001");
         int size = Math.min(Math.max(pageSize, 1), 200), pg = Math.max(page, 1);
         List<Object> args = new ArrayList<>();
         String where = searchClause(search, args, "b.bank_code", "b.bank_name", "b.bank_type", "b.city", "b.ifsc_code::text");
+        if (!caller.admin()) { where += (where.isBlank() ? " where " : " and ") + "exists (select 1 from public.\"MB002002\" bx where bx.bank_code=b.bank_code and bx.branch_code=?)"; args.add(caller.branch()); }
         args.add(size);
         args.add((long) (pg - 1) * size);
         List<Map<String, Object>> rows = db.queryForList(
@@ -112,10 +113,13 @@ public class MastersController {
 
     @GetMapping("/banks/{code}")
     public Map<String, Object> getBank(@PathVariable String code, Authentication auth) {
-        who(auth);
+        Who caller = who(auth);
+        List<Object> args = new ArrayList<>(List.of(code));
+        String scope = caller.admin() ? "" : " and exists (select 1 from public.\"MB002002\" bx where bx.bank_code=b.bank_code and bx.branch_code=?)";
+        if (!caller.admin()) args.add(caller.branch());
         List<Map<String, Object>> rows = db.queryForList(
                 "select b.*, (select count(*) from public.\"MB002002\" x where x.bank_code = b.bank_code) as _branches "
-                        + "from public.\"MB002001\" b where b.bank_code = ?", code);
+                        + "from public.\"MB002001\" b where b.bank_code = ?" + scope, args.toArray());
         if (rows.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "Bank not found.");
         return bankRecord(rows.get(0), columns("MB002001"));
     }
@@ -162,7 +166,7 @@ public class MastersController {
                                             @RequestParam(defaultValue = "10") int pageSize,
                                             @RequestParam(required = false) String search,
                                             @RequestParam(required = false) String status, Authentication auth) {
-        who(auth);
+        Who caller = who(auth);
         Set<String> cols = columns("MB002002");
         int size = Math.min(Math.max(pageSize, 1), 200), pg = Math.max(page, 1);
         if ("inactive".equalsIgnoreCase(status)) {
@@ -171,6 +175,7 @@ public class MastersController {
         }
         List<Object> args = new ArrayList<>();
         String where = searchClause(search, args, "b.branch_code", "b.branch_name", "b.ifsc_code::text", "b.br_city");
+        if (!caller.admin()) { where += (where.isBlank() ? " where " : " and ") + "b.branch_code = ?"; args.add(caller.branch()); }
         args.add(size);
         args.add((long) (pg - 1) * size);
         List<Map<String, Object>> rows = db.queryForList(
@@ -185,9 +190,12 @@ public class MastersController {
 
     @GetMapping("/branches/{code}")
     public Map<String, Object> getBranch(@PathVariable String code, Authentication auth) {
-        who(auth);
+        Who caller = who(auth);
+        List<Object> args = new ArrayList<>(List.of(code));
+        String scope = caller.admin() ? "" : " and b.branch_code = ?";
+        if (!caller.admin()) args.add(caller.branch());
         List<Map<String, Object>> rows = db.queryForList(
-                "select b.*, " + BRANCH_EXTRAS + " from public.\"MB002002\" b where b.branch_code = ?", code);
+                "select b.*, " + BRANCH_EXTRAS + " from public.\"MB002002\" b where b.branch_code = ?" + scope, args.toArray());
         if (rows.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "Branch not found.");
         return branchRecord(rows.get(0), columns("MB002002"));
     }
@@ -241,7 +249,7 @@ public class MastersController {
 
     // ================================================================== caller
 
-    private record Who(long id, String name, String role) {
+    private record Who(long id, String name, String role, String branch) {
         boolean admin() { return role.equals("ADMIN") || role.equals("SUPER_ADMIN"); }
     }
 
@@ -251,12 +259,14 @@ public class MastersController {
         try { id = Long.parseLong(auth.getName()); } catch (NumberFormatException e) { throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid session."); }
         String role = Objects.toString(claims.get("role"), "").toUpperCase(Locale.ROOT);
         if (!Set.of("ADMIN", "SUPER_ADMIN", "STAFF", "USER").contains(role)) throw new ApiException(HttpStatus.FORBIDDEN, "Your role cannot access master data.");
-        return new Who(id, Objects.toString(claims.get("username"), ""), role);
+        String branch = Objects.toString(claims.get("branch"), "").trim();
+        if (!role.equals("ADMIN") && !role.equals("SUPER_ADMIN") && branch.isEmpty()) throw new ApiException(HttpStatus.FORBIDDEN, "Your user has no branch assigned.");
+        return new Who(id, Objects.toString(claims.get("username"), ""), role, branch);
     }
 
     private Who writer(Authentication auth) {
         Who w = who(auth);
-        if (!w.admin()) throw new ApiException(HttpStatus.FORBIDDEN, "Only an administrator can change master data.");
+        if (!w.admin()) throw new ApiException(HttpStatus.FORBIDDEN, "Only Super Admin can change bank or branch master data.");
         return w;
     }
 
