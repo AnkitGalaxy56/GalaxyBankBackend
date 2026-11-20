@@ -39,7 +39,7 @@ public class AuthController {
   db.execute("create index if not exists idx_portal_auth_refresh_user on public.portal_auth_refresh_tokens(user_id)");
  }
  @PostMapping("/login") public Map<String,Object> login(@RequestBody Map<String,String> body){
-  String username=body.getOrDefault("loginId",body.get("user_name")); String password=body.get("password");
+  String username=Objects.toString(body.getOrDefault("loginId",body.get("user_name")),"").trim(); String password=body.get("password");
   if(username==null||password==null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Login ID and password are required");
   List<Map<String,Object>> users=db.queryForList("select user_id,user_name,user_role,sys_role,user_type,branch,status,bad_login,first_name,middle_name,last_name,email,mobile,idle_timeout from public.\"MB001001\" where user_name=?",username);
   if(users.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid login ID or password");
@@ -55,7 +55,7 @@ public class AuthController {
   pending.put(challenge,new Pending(uid,username,role,userRole,sysRole,branch,name,Objects.toString(u.get("email"),""),Objects.toString(u.get("mobile"),""),u.get("idle_timeout")==null?null:((Number)u.get("idle_timeout")).intValue(),Instant.now().plusSeconds(otpTtl*60)));
   return Map.of("otpRequired",true,"challengeId",challenge,"message","OTP sent");
  }
- @PostMapping("/verify-otp") @Transactional public Map<String,Object> verify(@RequestBody Map<String,String> body){String id=body.get("challengeId"); Pending p=pending.remove(id); if(p==null||p.expires().isBefore(Instant.now())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"OTP challenge expired. Login again"); if(!Objects.equals(otpValue,body.get("otp"))) {pending.put(id,p);throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid OTP");}
+ @PostMapping("/verify-otp") @Transactional public Map<String,Object> verify(@RequestBody Map<String,String> body){String id=body.get("challengeId"); Pending p=pending.get(id); if(p==null||p.expires().isBefore(Instant.now())) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"OTP challenge expired. Login again"); if(!Objects.equals(otpValue,body.get("otp"))) {pending.put(id,p);throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid OTP");}
   // A user may have only one active device session. Revoke all previous
   // refresh sessions before issuing the new device's tokens.
   db.update("update public.portal_auth_refresh_tokens set revoked_at=now(), revoked_reason='NEW_LOGIN' where user_id=? and revoked_at is null",p.userId());
@@ -64,6 +64,7 @@ public class AuthController {
   db.update("insert into public.portal_auth_refresh_tokens(user_id,token_hash,expires_at) values(?,?,?)",p.userId(),hashRefreshToken(refreshToken),Timestamp.from(Instant.now().plusSeconds(Math.max(1,refreshTtlHours)*3600)));
   db.update("update public.\"MB001001\" set token=?,login_time=now(),logout_time=null,bad_login=0 where user_id=?",token,p.userId());
   Map<String,Object> user=new LinkedHashMap<>();user.put("id",Long.toString(p.userId()));user.put("name",p.name());user.put("email",p.email());user.put("phone",p.phone());user.put("role",p.userRole().equalsIgnoreCase("Super Admin")?"SUPER_ADMIN":p.userRole().equalsIgnoreCase("Bank Admin")?"BANK_ADMIN":"BANK_USER");user.put("userRole",p.userRole().equalsIgnoreCase("Super Admin")?"SUPER_ADMIN":p.userRole().equalsIgnoreCase("Bank Admin")?"BANK_ADMIN":"BANK_USER");user.put("systemRole",p.sysRole());user.put("branch",p.branch());user.put("loginId",p.username());user.put("idleTimeoutMinutes",p.idleTimeout());
+  pending.remove(id,p);
   return Map.of("accessToken",token,"refreshToken",refreshToken,"user",user);
  }
  @PostMapping("/refresh") @Transactional public Map<String,String> refresh(@RequestBody Map<String,String> body){
