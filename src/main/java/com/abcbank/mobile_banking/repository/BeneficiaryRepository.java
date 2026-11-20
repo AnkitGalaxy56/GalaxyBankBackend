@@ -36,7 +36,7 @@ public class BeneficiaryRepository {
             SELECT user_id, customer_no
             FROM public."MB001001"
             WHERE status = 'ACTIVE'
-              AND user_role = 'CUSTOMER'
+              AND user_type = 'CU'
               AND (
                     customer_no = ?
                     OR user_id::text = ?
