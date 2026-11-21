@@ -137,6 +137,7 @@ public class MastersController {
         v.put("created_by", who.id());
         List<Map<String, Object>> rows = write("insert into public.\"MB002001\" (" + quoted(v.keySet()) + ") values ("
                         + String.join(",", Collections.nCopies(v.size(), "?")) + ")", v.values().toArray(), "MB002001", null);
+        syncBankTheme(Objects.toString(v.get("bank_code")), Objects.toString(v.get("bank_name")), true);
         audit(who, http, "CREATE", "bank-master", "code=" + v.get("bank_code"));
         return ResponseEntity.status(HttpStatus.CREATED).body(bankRecord(rows.get(0), cols));
     }
@@ -155,8 +156,43 @@ public class MastersController {
         if (v.isEmpty()) throw new ApiException(HttpStatus.BAD_REQUEST, "No editable fields were supplied.");
         List<Map<String, Object>> rows = update("MB002001", "bank_code", code, v, who);
         if (rows.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "Bank not found.");
+        String currentName = Objects.toString(v.getOrDefault("bank_name", rows.get(0).get("bank_name")), "");
+        syncBankTheme(code, currentName, false);
         audit(who, http, "UPDATE", "bank-master", "code=" + code + " fields=" + String.join(",", v.keySet()));
         return bankRecord(rows.get(0), cols);
+    }
+
+    /** Keeps one theme record linked to each bank master record. Bank ID is bank_code in MB002001. */
+    private void syncBankTheme(String bankCode, String bankName, boolean created) {
+        db.execute("create table if not exists public.portal_bank_theme (code varchar(100) primary key, theme_json text not null, updated_at timestamptz default now())");
+        db.execute("alter table public.portal_bank_theme add column if not exists bank_id varchar(100)");
+        String themeCode = bankCode.trim();
+        List<String> existing = db.query("select theme_json from public.portal_bank_theme where lower(code)=lower(?)", (rs, n) -> rs.getString(1), themeCode);
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            Map<String,Object> theme;
+            if (!existing.isEmpty()) {
+                theme = om.readValue(existing.get(0), Map.class);
+                theme.put("code", themeCode);
+                theme.put("name", bankName);
+                theme.putIfAbsent("shortName", bankName);
+                theme.putIfAbsent("tagline", "Secure digital banking");
+                theme.putIfAbsent("borderRadius", 8);
+                if (!theme.containsKey("mobileColors")) theme.put("mobileColors", theme.get("colors"));
+            } else {
+                Map<String,String> colors = new LinkedHashMap<>();
+                colors.put("primary", "#055242"); colors.put("primaryDark", "#03352b"); colors.put("primaryTint", "#e1eae8");
+                colors.put("background", "#F5F7FA"); colors.put("surface", "#FFFFFF"); colors.put("textPrimary", "#1A2433");
+                colors.put("textSecondary", "#5B6778"); colors.put("border", "#E1E6ED"); colors.put("authPanel", "#03352b");
+                theme = new LinkedHashMap<>(); theme.put("code", themeCode); theme.put("name", bankName);
+                theme.put("shortName", bankName); theme.put("tagline", "Secure digital banking"); theme.put("colors", colors);
+                theme.put("mobileColors", colors); theme.put("borderRadius", 8); theme.put("fontFamily", "Inter, Roboto, sans-serif");
+            }
+            String json = om.writeValueAsString(theme);
+            db.update("insert into public.portal_bank_theme(code, bank_id, theme_json) values (?,?,?) " +
+                    "on conflict (code) do update set bank_id=excluded.bank_id, theme_json=excluded.theme_json, updated_at=now()",
+                    themeCode, themeCode, json);
+        } catch (Exception e) { throw new IllegalStateException("Could not synchronize bank colour theme for " + bankCode, e); }
     }
 
     // ================================================================== branches

@@ -68,7 +68,7 @@ public class PushNotificationsController {
         if (search != null && !search.isBlank()) {
             String s = search.trim();
             if (s.length() > 60) throw new ApiException(HttpStatus.BAD_REQUEST, "Search text is too long.");
-            String like = "%" + s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+            String like = "%" + s.replace("\\", "\\").replace("%", "\\%").replace("_", "\\_") + "%";
             where.append(" and (n.title ilike ? or n.message ilike ?)");
             args.add(like);
             args.add(like);
@@ -87,11 +87,45 @@ public class PushNotificationsController {
     @GetMapping("/header")
     public Map<String, Object> headerNotifications(Authentication auth) {
         Caller who = Caller.of(auth);
-        ready();
-        String where = who.admin() ? " where n.status='Sent' " : " where n.status='Sent' and n.branch_code = ? ";
-        Object[] args = who.admin() ? new Object[0] : new Object[]{who.branch()};
-        List<Map<String,Object>> rows = db.queryForList("select n.*, b.branch_name from public.\"MB003003\" n left join public.\"MB002002\" b on b.branch_code=n.branch_code" + where + " order by n.sent_on desc, n.id desc limit 30", args);
-        return Map.of("items", rows.stream().map(this::record).toList());
+        final String select = "select n.id, n.customer_id, n.title, n.message, n.category, n.created_at, "
+                + "n.is_read, n.service_type, n.reference_id, n.priority "
+                + "from public.\"MB012001\" n ";
+        List<Map<String, Object>> rows;
+        if (who.admin()) {
+            // Super Admin / Admin: no customer or bank filter.
+            rows = db.queryForList(select + "order by n.created_at desc nulls last, n.id desc limit 100");
+        } else {
+            // Resolve the user's assigned branch to a bank code, then include every
+            // customer assigned to any branch of that bank. Also accept a bank code
+            // directly in the branch claim for legacy tokens.
+            String bankCode = null;
+            List<String> bankCodes = db.query("select bank_code from public.\"MB002002\" "
+                    + "where branch_code = ? limit 1", (rs, rowNum) -> rs.getString(1), who.branch());
+            if (!bankCodes.isEmpty()) bankCode = bankCodes.get(0);
+            if (bankCode == null || bankCode.isBlank()) {
+                List<String> direct = db.query("select bank_code from public.\"MB002002\" "
+                        + "where bank_code = ? limit 1", (rs, rowNum) -> rs.getString(1), who.branch());
+                if (!direct.isEmpty()) bankCode = direct.get(0);
+            }
+            if (bankCode == null || bankCode.isBlank()) {
+                log.warn("Notifications: unable to resolve bank for portal user id={}, role={}, branch={}", who.id(), who.role(), who.branch());
+                return Map.of("items", List.of());
+            }
+            rows = db.queryForList(select + "where exists (select 1 from public.\"MB002003\" c "
+                    + "join public.\"MB002002\" br on br.branch_code = c.branch_code "
+                    + "where c.customer_no = n.customer_id and br.bank_code = ?) "
+                    + "order by n.created_at desc nulls last, n.id desc limit 100", bankCode);
+        }
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> item = new LinkedHashMap<>(r);
+            item.put("createdOn", r.get("created_at"));
+            item.put("sentOn", r.get("created_at"));
+            items.add(item);
+        }
+        log.info("Notifications fetched: userId={}, role={}, branch={}, admin={}, count={}",
+                who.id(), who.role(), who.branch(), who.admin(), items.size());
+        return Map.of("items", items);
     }
 
     @GetMapping("/{id}")

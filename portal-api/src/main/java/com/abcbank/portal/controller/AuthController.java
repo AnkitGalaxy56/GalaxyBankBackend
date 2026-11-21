@@ -44,6 +44,23 @@ public class AuthController {
   List<Map<String,Object>> users=db.queryForList("select user_id,user_name,user_role,sys_role,user_type,branch,status,bad_login,first_name,middle_name,last_name,email,mobile,idle_timeout from public.\"MB001001\" where user_name=?",username);
   if(users.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid login ID or password");
   Map<String,Object> u=users.get(0); long uid=((Number)u.get("user_id")).longValue();
+  String portalType=Objects.toString(body.get("portalType"), "ALLIANZA").toUpperCase(Locale.ROOT);
+  String requestedBank=Objects.toString(body.get("bankCode"), "").trim();
+  String accountUserType=Objects.toString(u.get("user_type"), "STAFF").toUpperCase(Locale.ROOT);
+  if ("ALLIANZA".equals(portalType)) {
+    if (!"ADMIN".equals(accountUserType)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only Super Admin users can sign in to the Allianza platform portal.");
+  } else if ("BANK".equals(portalType)) {
+    if (requestedBank.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Bank code is required.");
+    List<String> themes=db.query("select theme_json from public.portal_bank_theme where code=?",(rs,n)->rs.getString(1),requestedBank);
+    if (themes.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Bank portal not found.");
+    if ("ADMIN".equals(accountUserType)) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Super Admin users cannot sign in through a bank portal.");
+    try {
+      String themeName=new com.fasterxml.jackson.databind.ObjectMapper().readTree(themes.get(0)).path("name").asText("");
+      String userBranch=Objects.toString(u.get("branch"), "");
+      List<String> userBanks=db.query("select k.bank_name from public.\"MB002002\" b join public.\"MB002001\" k on k.bank_code=b.bank_code where b.branch_code=?",(rs,n)->rs.getString(1),userBranch);
+      if (userBanks.isEmpty() || userBanks.stream().noneMatch(n -> n.equalsIgnoreCase(themeName))) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Your account is not associated with this bank portal.");
+    } catch (ResponseStatusException ex) { throw ex; } catch (Exception ex) { throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,"Unable to validate bank portal access."); }
+  } else throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid portal type.");
   if(!"ACTIVE".equalsIgnoreCase(Objects.toString(u.get("status"),""))) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"User account is not active");
   int failed=((Number)u.getOrDefault("bad_login",0)).intValue();
   if(failed>=5) throw new ResponseStatusException(HttpStatus.LOCKED,"User account is locked. Contact administrator");

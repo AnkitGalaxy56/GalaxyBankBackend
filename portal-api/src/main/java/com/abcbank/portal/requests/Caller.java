@@ -11,9 +11,9 @@ import java.util.Set;
 /** The signed-in portal user, taken from the verified JWT (never from the request body). */
 public record Caller(long id, String name, String role, String branch) {
 
-    private static final Set<String> PORTAL_ROLES = Set.of("ADMIN", "SUPER_ADMIN", "STAFF", "USER");
+    private static final Set<String> PORTAL_ROLES = Set.of("ADMIN", "SUPER_ADMIN", "SUPERADMIN", "SUPER ADMIN", "STAFF", "USER");
 
-    public boolean admin() { return role.equals("ADMIN") || role.equals("SUPER_ADMIN"); }
+    public boolean admin() { return role.equals("ADMIN") || role.equals("SUPER_ADMIN") || role.equals("SUPERADMIN") || role.equals("SUPER ADMIN"); }
 
     /** Any portal user. Staff must have a branch. */
     public static Caller of(Authentication auth) {

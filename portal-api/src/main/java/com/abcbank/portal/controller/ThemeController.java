@@ -36,7 +36,9 @@ public class ThemeController {
     void init() {
         db.execute("create table if not exists public.portal_bank_theme (" +
                 "code varchar(100) primary key, theme_json text not null, updated_at timestamptz default now())");
-        seed("sample-urban", defaultTheme("sample-urban", "Sample Urban Co-op Bank", "Sample Urban", "#1F5FBF", "#173F7A", "#E8F0FC"));
+        db.execute("alter table public.portal_bank_theme add column if not exists bank_id varchar(100)");
+        // Link existing bank theme rows to MB002001 using the bank code (the bank master identifier).
+        db.update("update public.portal_bank_theme t set bank_id=b.bank_code from public.\"MB002001\" b where t.bank_id is null and lower(t.code)=lower(b.bank_code)");
         seed("allianza", defaultTheme("allianza", "Allianza", "Allianza", "#0F766E", "#0B4F4A", "#E6F4F2"));
     }
 
@@ -120,8 +122,9 @@ public class ThemeController {
         validate(theme);
         try {
             String json = mapper.writeValueAsString(((com.fasterxml.jackson.databind.node.ObjectNode) theme.deepCopy()).put("code", code));
-            db.update("insert into public.portal_bank_theme(code, theme_json) values (?,?) " +
-                    "on conflict (code) do update set theme_json=excluded.theme_json, updated_at=now()", code, json);
+            db.update("insert into public.portal_bank_theme(code, theme_json, bank_id) values (?,?, " +
+                    "(select bank_code from public.\"MB002001\" where lower(bank_code)=lower(?))) " +
+                    "on conflict (code) do update set theme_json=excluded.theme_json, bank_id=coalesce(excluded.bank_id, public.portal_bank_theme.bank_id), updated_at=now()", code, json, code);
             audit.record(Caller.of(auth), http, isNew ? "CREATE" : "UPDATE", "theme", null, "code=" + code);
             return read(json);
         } catch (ApiException e) { throw e; }
