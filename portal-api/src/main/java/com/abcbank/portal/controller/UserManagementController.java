@@ -31,39 +31,43 @@ public class UserManagementController {
                                     @RequestParam(required = false) String role,
                                     @RequestParam(required = false) String authorizationStatus,
                                     Authentication auth) {
-        requireAdmin(auth);
+        requireAdminOrMaker(auth);
         int safePage = Math.max(1, page), safeSize = Math.min(5000, Math.max(1, pageSize));
         String q = search == null ? "" : search.trim();
         StringBuilder where = new StringBuilder(" where user_type in ('STAFF','ADMIN') ");
         List<Object> args = new ArrayList<>();
+        if (isBankAdminMaker(auth)) { where.append(" and branch = ? and lower(user_role) not like '%admin%' and user_type = 'STAFF' "); args.add(callerBranch(auth)); }
         if (!q.isBlank()) {
             where.append(" and (coalesce(emp_no,'') ilike ? or coalesce(full_name,'') ilike ? or coalesce(user_name,'') ilike ? or coalesce(email,'') ilike ? or coalesce(branch,'') ilike ?) ");
             String like = "%" + q + "%"; for (int i=0;i<5;i++) args.add(like);
         }
         if (branchId != null && !branchId.isBlank() && !"all".equalsIgnoreCase(branchId)) { where.append(" and branch = ? "); args.add(branchId); }
-        if (role != null && !role.isBlank() && !"all".equalsIgnoreCase(role)) { where.append(" and user_role = ? "); args.add(role.toLowerCase(Locale.ROOT).contains("admin") ? "ADMIN" : "STAFF"); }
+        if (role != null && !role.isBlank() && !"all".equalsIgnoreCase(role)) { where.append(" and lower(user_role) = lower(?) "); args.add(role); }
         if (authorizationStatus != null && !authorizationStatus.isBlank() && !"all".equalsIgnoreCase(authorizationStatus)) {
             where.append(" and ((? ilike 'Authorized' and verified_on is not null) or (? ilike 'Pending' and verified_on is null)) "); args.add(authorizationStatus); args.add(authorizationStatus);
         }
         Integer total = db.queryForObject("select count(*) from public.\"MB001001\"" + where, Integer.class, args.toArray());
         List<Object> pageArgs = new ArrayList<>(args); pageArgs.add(safeSize); pageArgs.add((safePage-1)*safeSize);
-        List<Map<String,Object>> rows = db.queryForList("select user_id,emp_no,title,first_name,middle_name,last_name,full_name,designation,dob,email,mobile,user_name,disp_name,user_role,sys_role,branch,status,multi_branch,idle_timeout,bad_login,login_time,logout_time,inop_date,\"2fa_login\",authentication,verified_on from public.\"MB001001\"" + where + " order by user_id desc limit ? offset ?", pageArgs.toArray());
+        List<Map<String,Object>> rows = db.queryForList("select user_id,emp_no,title,user_type,first_name,middle_name,last_name,full_name,designation,dob,email,mobile,user_name,disp_name,user_role,sys_role,branch,(select b.branch_name from public.\"MB002002\" b where b.branch_code=public.\"MB001001\".branch) as branch_name,status,multi_branch,idle_timeout,bad_login,login_time,logout_time,inop_date,\"2fa_login\",authentication,verified_on from public.\"MB001001\"" + where + " order by user_id desc limit ? offset ?", pageArgs.toArray());
         List<Map<String,Object>> items = rows.stream().map(this::toUser).toList();
         return Map.of("items", items, "total", total == null ? 0 : total, "page", safePage, "pageSize", safeSize);
     }
 
     @GetMapping("/{id}")
     public Map<String,Object> get(@PathVariable long id, Authentication auth) {
-        requireAdmin(auth);
-        return toUser(db.queryForMap("select user_id,emp_no,title,first_name,middle_name,last_name,full_name,designation,dob,email,mobile,user_name,disp_name,user_role,sys_role,branch,status,multi_branch,idle_timeout,bad_login,login_time,logout_time,inop_date,\"2fa_login\",authentication,verified_on from public.\"MB001001\" where user_id=? and user_type in ('STAFF','ADMIN')", id));
+        requireAdminOrMaker(auth);
+        if (isBankAdminMaker(auth) && !existsInBranch(id, callerBranch(auth))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Outside your branch scope.");
+        return toUser(db.queryForMap("select user_id,emp_no,title,user_type,first_name,middle_name,last_name,full_name,designation,dob,email,mobile,user_name,disp_name,user_role,sys_role,branch,(select b.branch_name from public.\"MB002002\" b where b.branch_code=public.\"MB001001\".branch) as branch_name,status,multi_branch,idle_timeout,bad_login,login_time,logout_time,inop_date,\"2fa_login\",authentication,verified_on from public.\"MB001001\" where user_id=? and user_type in ('STAFF','ADMIN')", id));
     }
 
     @PostMapping
     @Transactional
     public Map<String,Object> create(@RequestBody Map<String,Object> body, Authentication auth) {
-        requireAdmin(auth);
+        requireAdminOrMaker(auth);
+        if (isBankAdminMaker(auth)) { body.put("role", "Bank User"); body.put("systemRole", "Maker"); body.put("branchId", callerBranch(auth)); body.put("multiBranchAccess", false); }
         validate(body, null);
-        String userType = "ADMIN".equals(role(body)) ? "ADMIN" : "STAFF";
+        String selectedRole = role(body);
+        String userType = "Super Admin".equalsIgnoreCase(selectedRole) ? "ADMIN" : "STAFF";
         long id = db.queryForObject("insert into public.\"MB001001\" (emp_no,title,user_type,first_name,middle_name,last_name,designation,dob,email,mobile,user_name,disp_name,user_role,sys_role,branch,status,multi_branch,idle_timeout,bad_login,\"2fa_login\",authentication,created_by) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?) returning user_id",
                 Long.class, val(body,"employeeId"), titleDb(body), userType, val(body,"firstName"), emptyNull(val(body,"middleName")), val(body,"lastName"), emptyNull(val(body,"twoFactorDesignation")), dateOrNull(val(body,"dateOfBirth")), emptyNull(val(body,"email")), emptyNull(val(body,"mobile")), val(body,"userName"), emptyNull(val(body,"displayName")), role(body), emptyNull(val(body,"systemRole")), emptyNull(val(body,"branchId")), "PENDING", bool(body,"multiBranchAccess"), intOrNull(body.get("idleTimeoutSeconds")), bool(body,"twoFactorLogin"), emptyNull(val(body,"authenticationType")), userId(auth));
         return get(id, auth);
@@ -74,7 +78,7 @@ public class UserManagementController {
     public Map<String,Object> update(@PathVariable long id, @RequestBody Map<String,Object> body, Authentication auth) {
         requireAdmin(auth); validate(body, id);
         int changed = db.update("update public.\"MB001001\" set emp_no=?,title=?,user_type=?,first_name=?,middle_name=?,last_name=?,designation=?,dob=?,email=?,mobile=?,user_name=?,disp_name=?,user_role=?,sys_role=?,branch=?,status=?,multi_branch=?,idle_timeout=?,bad_login=?,inop_date=?,\"2fa_login\"=?,authentication=?,modified_by=?,modified_on=now() where user_id=? and user_type in ('STAFF','ADMIN')",
-                val(body,"employeeId"), titleDb(body), "ADMIN".equals(role(body)) ? "ADMIN" : "STAFF", val(body,"firstName"), emptyNull(val(body,"middleName")), val(body,"lastName"), emptyNull(val(body,"twoFactorDesignation")), dateOrNull(val(body,"dateOfBirth")), emptyNull(val(body,"email")), emptyNull(val(body,"mobile")), val(body,"userName"), emptyNull(val(body,"displayName")), role(body), emptyNull(val(body,"systemRole")), emptyNull(val(body,"branchId")), statusDb(val(body,"status")), bool(body,"multiBranchAccess"), intOrNull(body.get("idleTimeoutSeconds")), intOrNull(body.get("badLoginCount")), dateOrNull(val(body,"inoperativeDate")), bool(body,"twoFactorLogin"), emptyNull(val(body,"authenticationType")), userId(auth), id);
+                val(body,"employeeId"), titleDb(body), "Super Admin".equalsIgnoreCase(role(body)) ? "ADMIN" : "STAFF", val(body,"firstName"), emptyNull(val(body,"middleName")), val(body,"lastName"), emptyNull(val(body,"twoFactorDesignation")), dateOrNull(val(body,"dateOfBirth")), emptyNull(val(body,"email")), emptyNull(val(body,"mobile")), val(body,"userName"), emptyNull(val(body,"displayName")), role(body), emptyNull(val(body,"systemRole")), emptyNull(val(body,"branchId")), statusDb(val(body,"status")), bool(body,"multiBranchAccess"), intOrNull(body.get("idleTimeoutSeconds")), intOrNull(body.get("badLoginCount")), dateOrNull(val(body,"inoperativeDate")), bool(body,"twoFactorLogin"), emptyNull(val(body,"authenticationType")), userId(auth), id);
         if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found.");
         return get(id, auth);
     }
@@ -121,7 +125,8 @@ public class UserManagementController {
             case "ACTIVE" -> "Operative"; case "LOCKED" -> ((Number)r.getOrDefault("bad_login", 0)).intValue() >= 5 ? "Password Blocked" : "Suspended"; case "CLOSED" -> "In-Operative"; default -> "Entered";
         };
         String dbRole = Objects.toString(r.get("user_role"), "STAFF");
-        String role = "ADMIN".equalsIgnoreCase(dbRole) ? "Admin User" : "Bank User";
+        String role = "ADMIN".equalsIgnoreCase(Objects.toString(r.get("user_type"), "")) ? "Super Admin"
+                : (dbRole.toLowerCase(Locale.ROOT).contains("admin") ? "Bank Admin" : "Bank User");
         String name = Objects.toString(r.get("full_name"), "").trim();
         Map<String,Object> out = new LinkedHashMap<>();
         out.put("id", Objects.toString(r.get("user_id"))); out.put("title", "Mr.".equals(Objects.toString(r.get("title"), "")) ? "Mr" : "Dr.".equals(Objects.toString(r.get("title"), "")) ? "Dr" : Objects.toString(r.get("title"), "Mr"));
@@ -129,7 +134,7 @@ public class UserManagementController {
         out.put("middleName", Objects.toString(r.get("middle_name"), "")); out.put("lastName", Objects.toString(r.get("last_name"), "")); out.put("name", name);
         out.put("mobile", Objects.toString(r.get("mobile"), "")); out.put("email", Objects.toString(r.get("email"), "")); out.put("userName", Objects.toString(r.get("user_name"), ""));
         out.put("displayName", Objects.toString(r.get("disp_name"), "")); out.put("role", role); out.put("systemRole", Objects.toString(r.get("sys_role"), ""));
-        out.put("branchId", Objects.toString(r.get("branch"), "")); out.put("branchName", Objects.toString(r.get("branch"), ""));
+        out.put("branchId", Objects.toString(r.get("branch"), "")); out.put("branchName", Objects.toString(r.get("branch_name"), Objects.toString(r.get("branch"), "")));
         out.put("multiBranchAccess", Boolean.TRUE.equals(r.get("multi_branch")) ? List.of(Objects.toString(r.get("branch"), "")) : List.of());
         out.put("status", status); out.put("authorizationStatus", r.get("verified_on") == null ? "Pending" : "Authorized");
         out.put("dateOfBirth", r.get("dob") == null ? "" : r.get("dob").toString()); out.put("twoFactorDesignation", Objects.toString(r.get("designation"), ""));
@@ -142,16 +147,38 @@ public class UserManagementController {
 
     private void validate(Map<String,Object> b, Long id) {
         for (String k : List.of("employeeId","firstName","lastName","userName")) if (val(b,k).isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, k + " is required.");
+        String selectedRole=role(b); if (!Set.of("Super Admin","Bank Admin","Bank User").contains(selectedRole)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Select a valid user role."); String sys=val(b,"systemRole"); if (!Set.of("Admin","Maker","Checker","no").contains(sys)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Select a valid system role."); if ("Super Admin".equals(selectedRole) && !"Admin".equalsIgnoreCase(sys)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Super Admin must use system role Admin."); if (!"Super Admin".equals(selectedRole) && !Set.of("Maker","Checker").contains(sys)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Staff users must use Maker or Checker.");
         String title = val(b,"title"); if (!Set.of("Mr","Mr.","Mrs","Miss","Ms","Dr.").contains(title)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid title.");
         String email = val(b,"email"); if (!email.isBlank() && !email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Enter a valid email address.");
         String mobile = val(b,"mobile"); if (!mobile.isBlank() && !mobile.matches("^[6-9][0-9]{9}$")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Enter a valid 10-digit mobile number.");
         Integer duplicate = db.queryForObject("select count(*) from public.\"MB001001\" where (emp_no=? or user_name=? or (email is not null and email=?)) and user_type in ('STAFF','ADMIN') and (?::bigint is null or user_id<>?)", Integer.class, val(b,"employeeId"), val(b,"userName"), email, id, id);
         if (duplicate != null && duplicate > 0) throw new ResponseStatusException(HttpStatus.CONFLICT,"Employee ID, username or email is already in use.");
     }
-    private void requireAdmin(Authentication a) { if (a == null || a.getDetails() == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Authentication required."); Object role = ((org.springframework.security.core.Authentication)a).getAuthorities().stream().map(x->x.getAuthority()).filter(x->x.equals("ROLE_ADMIN")||x.equals("ROLE_BANK_ADMIN")||x.equals("ROLE_SUPER_ADMIN")).findFirst().orElse(null); if (role == null) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Administrator access required."); }
+    private boolean isBankAdminMaker(Authentication a) {
+        if (a == null || !(a.getDetails() instanceof Map<?, ?> claims)) return false;
+        String userRole = Objects.toString(claims.get("userRole"), "").toLowerCase(Locale.ROOT);
+        String sysRole = Objects.toString(claims.get("sysRole"), "").toLowerCase(Locale.ROOT);
+        String role = Objects.toString(claims.get("role"), "").toUpperCase(Locale.ROOT);
+        return (role.equals("STAFF") || role.equals("USER")) && userRole.contains("admin") && sysRole.equals("maker");
+    }
+    private String callerBranch(Authentication a) {
+        if (a == null || !(a.getDetails() instanceof Map<?, ?> claims)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required.");
+        String branch = Objects.toString(claims.get("branch"), "").trim();
+        if (branch.isEmpty()) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Branch assignment is required.");
+        return branch;
+    }
+    private boolean existsInBranch(long id, String branch) {
+        Integer count = db.queryForObject("select count(*) from public.\"MB001001\" where user_id=? and branch=? and user_type='STAFF' and lower(user_role) not like '%admin%'", Integer.class, id, branch);
+        return count != null && count > 0;
+    }
+    private void requireAdminOrMaker(Authentication a) {
+        if (isBankAdminMaker(a)) return;
+        requireAdmin(a);
+    }
+    private void requireAdmin(Authentication a) { if (a == null || a.getDetails() == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Authentication required."); boolean allowed = a.getAuthorities().stream().anyMatch(x -> x.getAuthority().equals("ROLE_SUPER_ADMIN") || x.getAuthority().equals("ROLE_ADMIN")); if (!allowed) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Super Admin access required."); }
     private long userId(Authentication a) { return Long.parseLong(a.getName()); }
     private static String val(Map<String,Object> b,String k) { return Objects.toString(b.get(k),"").trim(); }
-    private static String role(Map<String,Object> b) { return val(b,"role").toLowerCase(Locale.ROOT).contains("admin") ? "ADMIN" : "STAFF"; }
+    private static String role(Map<String,Object> b) { String value=val(b,"role"); if(value.equalsIgnoreCase("Super Admin") || value.equalsIgnoreCase("SUPER_ADMIN")) return "Super Admin"; if(value.equalsIgnoreCase("Bank Admin") || value.equalsIgnoreCase("ADMIN_USER")) return "Bank Admin"; return "Bank User"; }
     private static String titleDb(Map<String,Object> b) { String t=val(b,"title"); return "Mr".equalsIgnoreCase(t)?"Mr.":"Dr".equalsIgnoreCase(t)?"Dr.":t; }
     private static String statusDb(String s) { return switch(s.toLowerCase(Locale.ROOT)) { case "operative", "active" -> "ACTIVE"; case "in-operative", "closed" -> "CLOSED"; case "suspended", "password blocked", "locked" -> "LOCKED"; default -> "PENDING"; }; }
     private static String timeOnly(Object value) { if (value instanceof java.sql.Timestamp t) return t.toLocalDateTime().toLocalTime().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")); return ""; }

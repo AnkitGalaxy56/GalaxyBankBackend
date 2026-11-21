@@ -353,8 +353,11 @@ CREATE TABLE IF NOT EXISTS public."MB004002" (
     account_status VARCHAR(20),   -- snapshot at request time
     account_type   VARCHAR(20),   -- snapshot at request time
     req_status   req_status_t NOT NULL DEFAULT 'PENDING',
-    noof_books    SMALLINT NOT NULL CHECK (noof_books > 0),
-    delivery      VARCHAR(20) NOT NULL        -- BRANCH / HOME ...,
+       noof_leaves      SMALLINT CHECK (noof_leaves IN (25, 50)),
+    delivery         VARCHAR(20) NOT NULL,    -- BRANCH / PRIMARY_ADDRESS / DEFAULT_ADDRESS
+    cheque_book_type VARCHAR(50),
+    delivery_address VARCHAR(255),
+    book_type        VARCHAR(50),
     created_by   BIGINT       NOT NULL,
     created_on   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     modified_by  BIGINT,
@@ -1050,8 +1053,11 @@ CREATE TABLE IF NOT EXISTS public."MB004002" (
     account_status VARCHAR(20),   -- snapshot at request time
     account_type   VARCHAR(20),   -- snapshot at request time
     req_status   req_status_t NOT NULL DEFAULT 'PENDING',
-    noof_books    SMALLINT NOT NULL CHECK (noof_books > 0),
-    delivery      VARCHAR(20) NOT NULL        -- BRANCH / HOME ...,
+        noof_leaves      SMALLINT CHECK (noof_leaves IN (25, 50)),
+    delivery         VARCHAR(20) NOT NULL,    -- BRANCH / PRIMARY_ADDRESS / DEFAULT_ADDRESS
+    cheque_book_type VARCHAR(50),
+    delivery_address VARCHAR(255),
+    book_type        VARCHAR(50),
     created_by   BIGINT       NOT NULL,
     created_on   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     modified_by  BIGINT,

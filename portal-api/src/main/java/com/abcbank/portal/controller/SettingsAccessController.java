@@ -58,13 +58,18 @@ public class SettingsAccessController {
     @GetMapping("/my-access")
     public Map<String,Object> myAccess(Authentication auth) {
         if(auth==null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Authentication required.");
-        String role = "STAFF";
-        if (auth.getDetails() instanceof Map<?,?> claims) role = Objects.toString(claims.get("role"), "STAFF").toUpperCase(Locale.ROOT);
-        if (role.contains("ADMIN") && !role.equals("SUPER_ADMIN")) role = "ADMIN";
+        String role = "Bank User";
+        if (auth.getDetails() instanceof Map<?,?> claims) {
+            String userType = Objects.toString(claims.get("role"), "STAFF").toUpperCase(Locale.ROOT);
+            role = userType.equals("ADMIN") || userType.equals("SUPER_ADMIN")
+                    ? "Super Admin" : Objects.toString(claims.get("userRole"), "Bank User");
+        }
+        if (role.equalsIgnoreCase("Super Admin")) return Map.of("roleName", role, "permissions", List.of(), "configured", false);
         List<Map<String,Object>> roles=db.queryForList("select id,role_name,active,coalesce(permissions,'[]'::jsonb)::text permissions from public.portal_access_roles where lower(role_name)=lower(?)",role);
         if(roles.isEmpty()) return Map.of("roleName",role,"permissions",List.of(),"configured",false);
         Map<String,Object> r=roles.get(0);
-        return Map.of("roleName",role,"permissions",Boolean.TRUE.equals(r.get("active")) ? parsePermissions(Objects.toString(r.get("permissions"),"[]")) : List.of(),"configured",true);
+        List<Map<String,Object>> permissions = Boolean.TRUE.equals(r.get("active")) ? parsePermissions(Objects.toString(r.get("permissions"),"[]")) : List.of();
+        return Map.of("roleName",role,"permissions",permissions,"configured",!permissions.isEmpty());
     }
 
     private Map<String,Object> find(String id) { return role(db.queryForMap("select r.id,r.role_name,r.description,r.active,r.system_role,coalesce((select count(*) from public.\"MB001001\" u where u.user_type in ('STAFF','ADMIN') and (lower(coalesce(u.sys_role,''))=lower(r.role_name) or lower(coalesce(u.user_role,''))=lower(r.role_name))),0) assigned_users,coalesce(r.permissions,'[]'::jsonb)::text permissions from public.portal_access_roles r where r.id=?",id)); }
@@ -78,5 +83,5 @@ public class SettingsAccessController {
     private String name(Map<String,Object> b){return Objects.toString(b.get("name"),"").trim();}
     private boolean active(Map<String,Object> b){return "Active".equalsIgnoreCase(Objects.toString(b.get("status"),"Active"));}
     private long uid(Authentication a){return Long.parseLong(a.getName());}
-    private void requireAdmin(Authentication a){if(a==null||a.getAuthorities().stream().noneMatch(x->Set.of("ROLE_ADMIN","ROLE_BANK_ADMIN","ROLE_SUPER_ADMIN").contains(x.getAuthority()))) throw new ResponseStatusException(a==null?HttpStatus.UNAUTHORIZED:HttpStatus.FORBIDDEN,"Administrator access required.");}
+    private void requireAdmin(Authentication a){if(a==null||a.getAuthorities().stream().noneMatch(x->Set.of("ROLE_ADMIN","ROLE_SUPER_ADMIN").contains(x.getAuthority()))) throw new ResponseStatusException(a==null?HttpStatus.UNAUTHORIZED:HttpStatus.FORBIDDEN,"Administrator access required.");}
 }

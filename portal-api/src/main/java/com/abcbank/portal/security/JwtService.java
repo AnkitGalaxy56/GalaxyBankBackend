@@ -14,6 +14,7 @@ public class JwtService {
  @Value("${portal.jwt.secret}") private String secret;
  @Value("${portal.jwt.ttl-minutes:30}") private long ttl;
  private SecretKey key(){ if(secret==null || secret.length()<32) throw new IllegalStateException("PORTAL_JWT_SECRET must contain at least 32 characters"); return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)); }
- public String create(long userId,String username,String role,String branch){ Instant now=Instant.now(); return Jwts.builder().subject(Long.toString(userId)).claim("username",username).claim("role",role).claim("branch",branch).issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(ttl*60))).signWith(key()).compact(); }
+ public String create(long userId,String username,String role,String branch){ return create(userId,username,role,branch,""," "); }
+ public String create(long userId,String username,String role,String branch,String userRole,String sysRole){ Instant now=Instant.now(); return Jwts.builder().subject(Long.toString(userId)).claim("username",username).claim("role",role).claim("branch",branch).claim("userRole",userRole).claim("sysRole",sysRole).issuedAt(Date.from(now)).expiration(Date.from(now.plusSeconds(ttl*60))).signWith(key()).compact(); }
  public io.jsonwebtoken.Claims parse(String token){ return Jwts.parser().verifyWith(key()).build().parseSignedClaims(token).getPayload(); }
 }

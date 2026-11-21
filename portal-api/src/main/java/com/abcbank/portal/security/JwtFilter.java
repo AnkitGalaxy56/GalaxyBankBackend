@@ -14,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 @Component
@@ -89,12 +90,12 @@ public class JwtFilter extends OncePerRequestFilter {
             Set<SimpleGrantedAuthority> authorities = new LinkedHashSet<>();
             String normalizedRole = role.toUpperCase(Locale.ROOT);
             authorities.add(new SimpleGrantedAuthority("ROLE_" + normalizedRole));
-            if (normalizedRole.equals("ADMIN")) {
-                authorities.add(new SimpleGrantedAuthority("ROLE_BANK_ADMIN"));
-            } else if (normalizedRole.equals("STAFF") || normalizedRole.equals("USER")) {
-                authorities.add(new SimpleGrantedAuthority("ROLE_BANK_USER"));
-            } else if (normalizedRole.equals("SUPER_ADMIN")) {
+            if (normalizedRole.equals("ADMIN") || normalizedRole.equals("SUPER_ADMIN")) {
                 authorities.add(new SimpleGrantedAuthority("ROLE_ADMIN"));
+                authorities.add(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"));
+            } else if (normalizedRole.equals("STAFF") || normalizedRole.equals("USER")) {
+                String userRole = Objects.toString(claims.get("userRole"), "Bank User");
+                authorities.add(new SimpleGrantedAuthority(userRole.toLowerCase(Locale.ROOT).contains("admin") ? "ROLE_BANK_ADMIN" : "ROLE_BANK_USER"));
             }
 
             var authentication = new UsernamePasswordAuthenticationToken(

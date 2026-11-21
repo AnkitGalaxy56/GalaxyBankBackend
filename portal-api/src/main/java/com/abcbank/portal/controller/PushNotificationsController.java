@@ -84,6 +84,16 @@ public class PushNotificationsController {
         return Map.of("items", items, "total", total, "page", pg, "pageSize", size);
     }
 
+    @GetMapping("/header")
+    public Map<String, Object> headerNotifications(Authentication auth) {
+        Caller who = Caller.of(auth);
+        ready();
+        String where = who.admin() ? " where n.status='Sent' " : " where n.status='Sent' and n.branch_code = ? ";
+        Object[] args = who.admin() ? new Object[0] : new Object[]{who.branch()};
+        List<Map<String,Object>> rows = db.queryForList("select n.*, b.branch_name from public.\"MB003003\" n left join public.\"MB002002\" b on b.branch_code=n.branch_code" + where + " order by n.sent_on desc, n.id desc limit 30", args);
+        return Map.of("items", rows.stream().map(this::record).toList());
+    }
+
     @GetMapping("/{id}")
     public Map<String, Object> get(@PathVariable long id, Authentication auth) {
         Caller who = Caller.of(auth);
